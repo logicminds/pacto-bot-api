@@ -44,16 +44,15 @@ flowchart LR
 
 ---
 
-## What gets built
-
 | Component | Purpose |
 |---|---|
 | `pacto-bot-api` daemon | Long-running process that owns relay connections, encryption, signing, routing, and persistence |
 | Unix socket API | Primary local interface for bot handlers (`$DATA_DIR/pacto-bot-api.sock`) |
 | Localhost HTTP API | Optional interface on `127.0.0.1:9800`, disabled by default, protected by a secret token |
-| `pacto-bot-admin` CLI | Tool to create bots, publish profiles, test bunkers, export/import bot state |
+| `pacto-bot-admin` CLI | Tool to create bots, publish profiles, test bunkers, export/import bot state, and emit structured diagnostics |
+| `schemas/` | Canonical JSON Schema/OpenRPC contract for config, JSON-RPC catalog, and metrics |
+| Diagnostics & metrics | `agent.metrics` JSON-RPC, `pacto-bot-admin diagnose`, and `$DATA_DIR/reports/latest.json` for agentic feedback |
 | Python example handler | Reference bot plus reusable pytest fixtures |
-
 ---
 
 ## How bot developers will use it
@@ -77,6 +76,7 @@ The daemon pushes incoming DMs to the handler; the handler replies by sending a 
 - Handler registration with capability checks.
 - SQLite persistence of event cursors and handler state.
 - Graceful startup, shutdown, and restart recovery.
+- Machine-readable schemas, deterministic in-process tests, structured diagnostics, and secret-redaction verification for agentic workflows.
 - Three signing options ranked by security posture:
   - local test key (development only, warned in logs)
   - local NIP-46 bunker
@@ -100,7 +100,7 @@ The daemon pushes incoming DMs to the handler; the handler replies by sending a 
 
 ## Delivery breakdown
 
-The work is split into 12 implementation units:
+The work is split into 15 implementation units:
 
 ```mermaid
 flowchart LR
@@ -115,10 +115,12 @@ flowchart LR
     U9 --> U10["U10: Python reference handler"]
     U9 --> U11["U11: Integration tests"]
     U2 --> U12["U12: Admin CLI"]
+    U1 --> U13["U13: Schema contract"]
+    U9 --> U14["U14: Diagnostics & metrics"]
+    U5 --> U15["U15: Secret-redaction tests"]
 ```
 
-Units U1–U9 build the daemon itself. U10 provides a developer-friendly example. U11 adds end-to-end tests. U12 adds the admin tool.
-
+Units U1–U9 build the daemon itself. U10 provides a developer-friendly example. U11 adds end-to-end tests. U12 adds the admin tool. U13–U15 define the agentic verification layer: schema-first contracts, structured diagnostics/metrics/dev-env compatibility, and secret-redaction tests.
 ---
 
 ## Main risks
@@ -137,5 +139,10 @@ Units U1–U9 build the daemon itself. U10 provides a developer-friendly example
 - Daemon starts from a TOML config and accepts handler connections over a Unix socket.
 - A Python example handler can register, receive a DM, and send a reply.
 - Cursors and handler state survive a daemon restart.
-- Integration tests pass against a local Nostr relay.
+- Integration tests pass against in-process mock relay/bunker and, optionally, the `pacto-dev-env` Docker environment.
 - Admin CLI can create, export, import, and verify bot identities.
+- `cargo test` includes schema-sync checks, secret-redaction tests, and requirement-coverage checks; `agent.metrics` and `pacto-bot-admin diagnose --format json` produce machine-parseable output.
+- Graceful shutdown persists cursors and releases the lock; restart recovers from the last cursor without duplicate delivery under the cursor-advance rule.
+- Per-handler and per-bot aggregate rate limits return `-32005` when exceeded.
+- Slow or disconnected handlers cannot block dispatch to other handlers.
+- Every requirement R1–R37 has at least one covering test or documented exclusion.

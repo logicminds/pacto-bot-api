@@ -72,6 +72,12 @@ The daemon-first approach (architecture doc §7.9) solves both: one copy of the 
 - R29. **State migration.** `pacto-bot-admin export` and `import` include metadata and a warning against running the same bot identity on multiple daemon instances concurrently. Active split-brain detection is deferred to Phase 2.
 - R30. **Handler failure isolation.** Per-handler dispatch has a bounded timeout; a slow or hung handler cannot block dispatch to other handlers. Unregistered/crashed handlers are removed from the routing table.
 - R31. **Operator health/status.** The daemon exposes a lightweight status query (via `pacto-bot-admin status` or a JSON-RPC method) reporting daemon uptime, connected relays, bunker connectivity per bot, and registered handler count.
+- R32. **Machine-readable contract.** The daemon's config schema, JSON-RPC method catalog, and metrics schema are published as JSON Schema/OpenRPC artifacts in `schemas/`. Rust types used for serialization are generated from or continuously checked against these schemas.
+- R33. **Deterministic test modes.** The default `cargo test` suite runs in-process with mock relay and mock bunker implementations and completes without external services. Integration tests against the `pacto-dev-env` Docker environment are available but gated and documented separately.
+- R34. **Secret-redaction verification.** Sensitive values (nsec, bunker URI, HTTP secret token) are never emitted in logs, error responses, binary strings, or process memory dumps. A dedicated test suite verifies this invariant.
+- R35. **Machine-parseable diagnostics.** `pacto-bot-admin diagnose --format json` and `agent.metrics` emit structured health and metric data that an agent can consume without log parsing.
+- R36. **Service-version compatibility probing.** When running against `pacto-dev-env`, the daemon probes the versions of external services (relay, bunker, Nostra, Aztec) and warns when they fall outside the declared compatibility window.
+- R37. **Last-run report.** On shutdown and periodically during runtime, the daemon flushes a structured JSON report to `$DATA_DIR/reports/latest.json` containing startup diagnostics, event counters, cursors, handler counts, errors, and health status.
 
 ### Non-goals for this plan
 
@@ -89,6 +95,11 @@ The daemon-first approach (architecture doc §7.9) solves both: one copy of the 
 3. **Security invariants hold.** Unix socket is created with `0o600` permissions, HTTP transport rejects requests missing `X-Pacto-Bot-Secret`, daemon exits with a clear error when the lock file is already held, config file permissions are enforced, and bunker backends fail hard when the bunker's pubkey does not match the configured npub.
 4. **Handler authorization and fan-out.** A handler registered only for bot A is rejected with `-32006` when calling `agent.send_dm` for bot B; two handlers registered for the same bot both receive the same event.
 5. **Admin CLI lifecycle works.** `pacto-bot-admin new` produces a valid config snippet, `publish-profile` emits a `kind:0` event with `bot: true`, `test-bunker` exits 0 on pubkey match and non-zero on mismatch, and `export`/`import` preserve cursors while refusing to run when the daemon lock is held.
+6. **Agentic verification layer is operational.** `cargo test` passes, including schema-sync validation, secret-redaction tests, in-process mock-relay/mock-bunker integration tests, and requirement-coverage checks. `pacto-bot-admin diagnose --format json` and `agent.metrics` produce machine-parseable output, and `$DATA_DIR/reports/latest.json` is flushed on shutdown.
+7. **Graceful shutdown and restart recovery.** SIGTERM/SIGINT triggers `agent.status {state:"shutting_down"}` to all connected handlers, persists cursors to `agent.db`, releases the lock file, and emits `agent.status {state:"stopped"}`. On restart, stored npub values are validated against config, mismatched cursors are reset, and subscriptions resume from the last persisted cursor without duplicate delivery under the cursor-advance rule.
+8. **Rate limits are enforced.** A handler exceeding 10 mutating operations per second receives `-32005` on the 11th call within one second; the rate limiter allows a burst of 20. Two handlers sharing a bot cannot exceed the per-bot aggregate mutating-operations limit.
+9. **Failure isolation holds.** A slow or hung handler cannot block dispatch to other handlers, does not prevent the daemon from advancing the cursor after the dispatch timeout expires, and is removed from the routing table on disconnect.
+10. **Requirement coverage is complete.** Every requirement R1–R37 has at least one covering test or explicit justification for exclusion, verified by the requirement-coverage report emitted in CI.
 
 ## System-Wide Impact
 
@@ -98,6 +109,7 @@ The daemon-first approach (architecture doc §7.9) solves both: one copy of the 
 |-------------|----------------------|----------------------------------|
 | **Bot operator** | Runs one daemon instead of one backend per bot. | Daemon config, lock file, SQLite DB, Unix socket permissions, bunker/key custody, relay selection, secret token rotation. |
 | **Bot developer** | Writes a JSON-RPC handler in any language. | Daemon socket/HTTP endpoint, `handler.register` semantics, capability model, rate-limit behavior, event-delivery semantics. |
+| **Agentic workflow / AI maintainer** | Verifies changes against `cargo test`, machine-readable schemas, structured diagnostics, and secret-redaction tests without waiting for human review. | `schemas/` contract, `agent.metrics`, `pacto-bot-admin diagnose`, `$DATA_DIR/reports/latest.json`, `pacto-dev-env` integration harness. |
 | **Pacto core maintainer** | No required core changes in Phase 1; optional Phase 1.5 headless/event-bridge integration. | Protocol compatibility of DM/MLS wire formats; dependency versions of `nostr-sdk`, `mdk_core`, `alloy`. |
 | **End user / squad member** | Interacts with bots as Nostr identities. | Must invite bot npub to squads; bot operator can read plaintext DMs/group messages. |
 
@@ -106,7 +118,11 @@ The daemon-first approach (architecture doc §7.9) solves both: one copy of the 
 - **Unix socket** — primary handler transport (`$DATA_DIR/pacto-bot-api.sock`, `0o600`).
 - **localhost HTTP** — optional handler transport (`127.0.0.1:9800`, `X-Pacto-Bot-Secret`).
 - **`pacto-bot-api.toml`** — operator-facing bot identity and capability declaration.
-- **`pacto-bot-admin` CLI** — bot lifecycle, export/import, bunker testing, config validation, token rotation.
+- **`pacto-bot-admin` CLI** — bot lifecycle, export/import, bunker testing, config validation, token rotation, and `diagnose --format json`.
+- **`agent.metrics`** — stable, machine-parseable runtime metrics (JSON-RPC method/notification).
+- **`$DATA_DIR/reports/latest.json`** — last-run report flushed on shutdown and periodically at runtime.
+- **`schemas/`** — canonical JSON Schema/OpenRPC artifacts for config, JSON-RPC catalog, metrics, and service-compatibility windows.
+- **`pacto-dev-env`** — external Docker environment for higher-fidelity integration tests; not bundled with the daemon.
 - **Nostr relays** — inbound/outbound DM traffic (`kind:1059` gift wraps).
 - **NIP-46 bunkers** — remote signing requests per bot identity.
 - **`agent.db` SQLite** — cursors, handler registrations, config.
@@ -181,6 +197,8 @@ The daemon-first approach (architecture doc §7.9) solves both: one copy of the 
 | Rate limit | 10 mutating ops/sec per handler, burst 20; per-bot aggregate limit | Per-bot only, per-relay limit, no limit | 10/sec protects relays from accidental spam; burst 20 absorbs small batch replies. Per-relay limits are outside daemon control. |
 | Repository location | Standalone repo | Pacto workspace member | See KTD-1. |
 
+- **KTD-15. Schema-first, machine-readable contract for agentic verification.** The canonical API contract lives in `schemas/` as JSON Schema/OpenRPC artifacts. Rust serialization types are generated from these schemas, and CI enforces that generated code and schemas stay in sync. *Rejected — Rust-only annotations:* would make the contract implicit and force non-Rust consumers to reverse-engineer serde behavior. *Rejected — protobuf/gRPC:* would add generated-stub friction for dynamic languages and conflicts with the JSON-RPC decision in KTD-4. Rationale: a published schema lets agents and CI verify compatibility without human interpretation, supports multi-language SDKs later, and prevents silent API drift.
+
 ## High-Level Technical Design
 
 ### Architecture
@@ -245,6 +263,57 @@ The daemon exposes JSON-RPC 2.0 over two transports. The method catalog is adapt
 **Naming convention:** JSON-RPC method and parameter names use `snake_case` (e.g., `agent.event`, `handler.register`). Corresponding Rust structs/enums use `PascalCase` with `serde(rename_all = "snake_case")` so the wire format stays consistent across languages.
 
 **Transport:** Unix socket at `$PACT_DATA_DIR/pacto-bot-api.sock` (permissions `0o600`) and localhost HTTP at `127.0.0.1:9800`. Both use newline-delimited JSON frames.
+
+## Agentic Verification & Feedback Layer
+
+The daemon must be maintainable by agentic workflows, not only by humans reading prose. This section defines the machine-readable contract, deterministic test modes, structured diagnostics, security-invariant verification, requirement traceability, and feedback channels that let an AI close its own OODA loop without waiting for human review.
+
+### A. Machine-readable contract artifacts
+
+- Add a `schemas/` directory at the repo root:
+  - `schemas/config.json` — JSON Schema for `pacto-bot-api.toml`.
+  - `schemas/jsonrpc.json` — OpenRPC/JSON Schema document for the JSON-RPC method catalog.
+  - `schemas/metrics.json` — JSON Schema for the `agent.metrics` payload.
+- Rust structs in `src/transport/protocol.rs` and `src/config.rs` are generated from the schemas via a build script or `cargo xtask codegen`.
+- CI enforces that committed schemas and generated Rust types are in sync; a PR that changes one without the other fails the build gate.
+
+### B. Deterministic, Docker-free test modes
+
+Three test modes are supported, selectable by the agent based on the fidelity it needs:
+
+1. **In-process mode (default).** `cargo test` runs against in-process mock relay and mock bunker implementations in `tests/support/`. No Docker, no external services. Target: completes in under 30 seconds.
+2. **dev-env integration mode.** Requires the `pacto-dev-env` Docker environment (https://github.com/covenant-gov/pacto-dev-env) to be running. Instructions and health checks live in `docs/dev-env.md`. This mode validates real relay, bunker, and (where applicable) Aztec/Nostra service interactions.
+3. **Property/chaos mode (optional).** `proptest`-based tests for frame parsing, rate limiting, cursor advancement, and handler authorization; plus randomized daemon restart/kill tests against temp `data_dir` instances.
+
+The agent build gate is `cargo test`. A change is considered verified when `cargo test` passes locally, including the in-process integration suite.
+
+### C. Structured diagnostics, metrics, and service-version probing
+
+- `pacto-bot-admin diagnose --format json` emits a machine-parseable health report covering: config validity, DB state, lock-file status, socket permissions, relay connectivity per bot, bunker connectivity per bot, and the detected versions of external services (relay, bunker, Nostra, Aztec) when the dev-env is in use.
+- `agent.metrics` is exposed as both a JSON-RPC request/response and a periodic notification. The schema is stable and unversioned for Phase 1. Example keys: `events_received_total`, `events_dispatched_total`, `handlers_registered`, `rate_limited_total`, `relay_reconnects_total`, `bunker_sign_failures_total`.
+- Service-version probing is best-effort: the daemon attempts to read version endpoints or handshake metadata and logs a warning when the running service version is outside the compatibility window declared in `schemas/service-compatibility.json`.
+
+### D. Security-invariant verification
+
+- Sensitive types (nsec, bunker URI, HTTP token) are represented with `secrecy::SecretString` or `zeroize::Zeroizing` in code; clippy/cargo-deny lints forbid plain `String`/`&str` for these values.
+- A dedicated secret-redaction test suite exercises every error path and log sink with synthetic secrets, then asserts no leakage. Coverage includes:
+  - tracing spans and log files;
+  - JSON-RPC error responses;
+  - `strings` output of the compiled binary;
+  - core-dump memory scans (platform-permitting).
+- The suite is part of `cargo test` and runs against mock services only.
+
+### E. Requirement traceability
+
+- Tests carry a `#[req(R1, R3, ...)]` attribute or doc-comment tag linking them to the requirements in this plan.
+- A report generator lists requirements with zero covering tests; the report is emitted in CI and can be read by an agent.
+
+### F. Feedback channels
+
+- **Live API:** `agent.metrics` JSON-RPC and `pacto-bot-admin diagnose --format json` return current daemon state while running.
+- **Disk report:** On shutdown and periodically during runtime, the daemon flushes `$DATA_DIR/reports/latest.json`, a structured last-run report containing startup diagnostics, event counters, cursor positions, handler counts, errors, and health status. This report survives daemon crashes and can be archived as a CI artifact.
+
+Both channels are derived from the same internal state snapshot and share the same schema subset, so they cannot drift.
 
 
 #### Daemon → Handler (notifications, no `id`)
@@ -406,6 +475,13 @@ pacto-bot-api/
 ├── Cargo.toml
 ├── pacto-bot-api.toml.example
 ├── README.md
+├── schemas/
+│   ├── config.json          # JSON Schema for pacto-bot-api.toml
+│   ├── jsonrpc.json         # OpenRPC/JSON Schema for the JSON-RPC catalog
+│   ├── metrics.json         # JSON Schema for agent.metrics payload
+│   └── service-compatibility.json  # Supported external-service version ranges
+├── xtask/
+│   └── src/main.rs          # Build/task runner: codegen, full check, dev-env probe
 ├── src/
 │   ├── main.rs              # Daemon CLI entry point, lifecycle
 │   ├── admin.rs             # Admin CLI entry point (pacto-bot-admin)
@@ -420,11 +496,30 @@ pacto-bot-api/
 │   │   ├── mod.rs           # TransportLayer: Unix socket + HTTP
 │   │   ├── unix.rs          # Unix socket listener, connection management
 │   │   ├── http.rs          # localhost HTTP server (axum)
-│   │   └── protocol.rs      # JSON-RPC 2.0 parsing, validation, serialization
+│   │   └── protocol.rs      # JSON-RPC 2.0 parsing, validation, serialization (generated + hand-written)
 │   ├── handlers.rs          # Handler registry: register, unregister, lookup
 │   ├── db.rs                # SQLite: migrations, cursors, handler state
 │   ├── events.rs            # Event types, AgentEvent struct
-│   └── errors.rs            # Error types, JSON-RPC error codes
+│   ├── errors.rs            # Error types, JSON-RPC error codes
+│   └── diagnostics.rs       # Health snapshots, metrics aggregation, report flushing
+├── tests/
+│   ├── support/
+│   │   ├── mock_relay.rs    # In-process Nostr relay for fast tests
+│   │   ├── mock_bunker.rs   # In-process NIP-46 bunker for fast tests
+│   │   ├── secret_scan.rs   # Secret-redaction test helpers
+│   │   └── req_attr.rs      # #[req(R...)] test attribute
+│   ├── cli_args.rs
+│   ├── bunker_integration.rs
+│   ├── nostr_client.rs
+│   ├── transport_unix.rs
+│   ├── transport_http.rs
+│   ├── dispatch_integration.rs
+│   ├── daemon_startup.rs
+│   ├── daemon_shutdown.rs
+│   ├── integration_test.rs
+│   ├── admin_cli_creation.rs
+│   ├── admin_cli_bunker.rs
+│   └── admin_cli_migration.rs
 ├── examples/
 │   ├── echo_bot.py          # Reference Python handler
 │   ├── conftest.py          # pytest fixtures (daemon, handler_client, DaemonClient)
@@ -432,7 +527,8 @@ pacto-bot-api/
 │   ├── test-config.toml     # Test daemon config
 │   └── README.md            # Handler + test setup instructions
 └── docs/
-    └── bot-creation.md      # Manual bot creation guide (4 steps)
+    ├── bot-creation.md      # Manual bot creation guide
+    └── dev-env.md           # How to start pacto-dev-env and run integration tests
 ```
 
 ## Implementation Units
@@ -440,16 +536,27 @@ pacto-bot-api/
 ### U1. Crate scaffolding and workspace setup
 
 - **Goal:** Create the `pacto-bot-api` crate with Cargo.toml, module structure, and build configuration.
-- **Requirements:** R1, R2
+- **Requirements:** R1, R2, R32, R33, R34, R35, R36, R37
 - **Dependencies:** None
 - **Files:**
-  - `Cargo.toml` — dependencies: `nostr-sdk` 0.43 (features: `nip06`, `nip44`, `nip46`, `nip59`), `tokio` (full), `serde` + `serde_json`, `rusqlite` (bundled), `toml`, `axum`, `tokio-util`, `tracing` + `tracing-subscriber`, `clap` (derive), `zeroize`, `uuid`. Declares `[[bin]]` entries for `pacto-bot-api` (`src/main.rs`) and `pacto-bot-admin` (`src/admin.rs`).
+  - `Cargo.toml` — runtime dependencies: `nostr-sdk` 0.43 (features: `nip06`, `nip44`, `nip46`, `nip59`), `tokio` (full), `serde` + `serde_json`, `rusqlite` (bundled), `toml`, `axum`, `tokio-util`, `tracing` + `tracing-subscriber`, `clap` (derive), `zeroize`, `uuid`, `secrecy`. Build/dev tools: `schemars` (schema generation), `jsonschema` (schema validation in tests), `proptest` (property tests), `cargo-deny` (CI audit). Declares `[[bin]]` entries for `pacto-bot-api` (`src/main.rs`) and `pacto-bot-admin` (`src/admin.rs`).
   - `src/main.rs` — CLI entry point with `clap`: `--config <path>` flag, `--data-dir <path>` flag, `--enable-http` flag. Initializes tracing, loads config, starts daemon.
   - `src/config.rs` — `DaemonConfig` and `BotConfig` structs with `serde::Deserialize` for TOML. `DaemonConfig::load(path) -> Result<Self>`. Enforces config file permissions (`0o600`).
   - `src/errors.rs` — `DaemonError` enum wrapping io, config, nostr, bunker, sqlite, and JSON-RPC errors. Implements `Into<JsonRpcError>` for JSON-RPC error codes.
   - `pacto-bot-api.toml.example` — documented example config with two bot identities.
   - `tests/cli_args.rs` — CLI argument parsing tests.
   - `src/config.rs` `#[cfg(test)]` module — TOML parsing and validation tests.
+  - `schemas/config.json` — JSON Schema for `pacto-bot-api.toml`.
+  - `schemas/jsonrpc.json` — OpenRPC/JSON Schema for the JSON-RPC method catalog.
+  - `schemas/metrics.json` — JSON Schema for the `agent.metrics` payload.
+  - `schemas/service-compatibility.json` — supported version ranges for external services.
+  - `xtask/src/main.rs` — task runner for codegen, full verification, and dev-env probes.
+  - `src/diagnostics.rs` — health snapshots, metrics aggregation, service-version probing, and report flushing.
+  - `tests/support/mock_relay.rs` — in-process Nostr relay for fast tests.
+  - `tests/support/mock_bunker.rs` — in-process NIP-46 bunker for fast tests.
+  - `tests/support/secret_scan.rs` — helpers for secret-redaction tests.
+  - `tests/support/req_attr.rs` — `#[req(R...)]` test attribute for requirement traceability.
+  - `docs/dev-env.md` — instructions for starting `pacto-dev-env` and running gated integration tests.
 - **Approach:** Standard Rust binary crate. Use `clap` for CLI, `toml` + `serde` for config, `tracing` for structured logging. The crate is standalone — it depends on published crates, not on Pacto's workspace.
 - **Patterns to follow:** Standard Rust project layout. `main.rs` is thin; real logic lives in modules.
 - **Test scenarios:**
@@ -730,13 +837,14 @@ pacto-bot-api/
 ### U11. Integration tests
 
 - **Goal:** End-to-end tests verifying the daemon, handler, and Nostr relay work together correctly.
-- **Requirements:** R1–R31 (integration coverage)
+- **Requirements:** R1–R31, R33, R36 (integration coverage)
 - **Dependencies:** U1–U8, U9a, U9b, U10
 - **Files:**
   - `tests/integration_test.rs` — spawns daemon with test config, connects a test handler, sends DMs via a test Nostr client, verifies handler receives events and can reply.
   - `tests/test-config.toml` — test configuration with a single bot identity using a test bunker and test relay.
   - `tests/support/mock_relay.rs` — lightweight in-process relay for fast, Docker-free tests.
-- **Approach:** Provide two test modes. Default `cargo test` uses an in-process mock relay (`tests/support/mock_relay.rs`) so contributors without Docker can run the suite. Docker-based tests against `nostr-rs-relay` are gated behind `#[ignore]` and env var `PACTO_BOT_API_DOCKER_TEST=1`. Use a test NIP-46 bunker or mock signer. The test: (1) start relay, (2) start daemon with test config, (3) connect test handler via Unix socket, (4) send a DM from a test keypair to the bot's npub, (5) assert the handler receives the `agent.event` notification, (6) handler sends `reply`, (7) assert the reply appears on the relay as a gift wrap to the original sender.
+  - `tests/support/mock_bunker.rs` — lightweight in-process NIP-46 bunker for fast, Docker-free tests.
+- **Approach:** Provide three test modes. Default `cargo test` uses in-process mock relay and mock bunker (`tests/support/`) so contributors without Docker can run the suite. Integration tests against the `pacto-dev-env` Docker environment are gated behind `#[ignore]` and env var `PACTO_DEV_ENV=1`; see `docs/dev-env.md` for setup. Docker-based tests against `nostr-rs-relay` remain available behind `PACTO_BOT_API_DOCKER_TEST=1` as a fallback. The canonical in-process test: (1) start mock relay and mock bunker, (2) start daemon with test config, (3) connect test handler via Unix socket, (4) send a DM from a test keypair to the bot's npub, (5) assert the handler receives the `agent.event` notification, (6) handler sends `reply`, (7) assert the reply appears on the relay as a gift wrap to the original sender.
 - **Patterns to follow:** Standard Rust integration tests with `#[tokio::test]`. Docker for optional external-dependency tests.
 - **Test scenarios:**
   - Full DM round-trip: send → daemon receives → handler gets event → handler replies → reply appears on relay.
@@ -746,7 +854,7 @@ pacto-bot-api/
   - Handler disconnection: daemon removes handler, subsequent events are not dispatched to it.
   - Spawn a second handler process as the same uid and verify it can intercept events (negative test that documents the Unix socket trust boundary).
   - Best-effort delivery: handler that crashes before responding loses the event.
-- **Verification:** `cargo test` (mock relay). `cargo test -- --ignored` for Docker-based tests (when `PACTO_BOT_API_DOCKER_TEST=1`). CI runs them with `cargo test -- --include-ignored`.
+- **Verification:** `cargo test` (mock relay/bunker). `cargo test -- --ignored` for `pacto-dev-env` tests (when `PACTO_DEV_ENV=1`). `cargo test -- --include-ignored` runs all modes in CI.
 
 ### U12a. Admin CLI: bot creation and profile
 
@@ -805,6 +913,68 @@ pacto-bot-api/
   - `pacto-bot-admin --help` prints usage with all subcommands.
 - **Verification:** `cargo run --bin pacto-bot-admin -- export test-bot` outputs JSON. `cargo run --bin pacto-bot-admin -- validate-config` reports any issues. Manual test: follow the `docs/bot-creation.md` guide end-to-end.
 
+### U13. Schema contract and codegen
+
+- **Goal:** Maintain a machine-readable contract for config, JSON-RPC, and metrics so agents and CI can verify that code and spec stay in sync.
+- **Requirements:** R32
+- **Dependencies:** U1
+- **Files:**
+  - `schemas/config.json` — JSON Schema for `pacto-bot-api.toml`.
+  - `schemas/jsonrpc.json` — OpenRPC/JSON Schema for the JSON-RPC method catalog.
+  - `schemas/metrics.json` — JSON Schema for the `agent.metrics` payload.
+  - `schemas/service-compatibility.json` — supported version ranges for relay, bunker, Nostra, and Aztec services.
+  - `xtask/src/main.rs` — `cargo xtask codegen` reads `schemas/` and writes generated Rust types to `src/transport/protocol_generated.rs` and `src/config_generated.rs`.
+  - `tests/schema_sync.rs` — fails if generated Rust types diverge from committed schemas.
+- **Approach:** JSON Schema is the source of truth. Agents edit `schemas/` first, then run `cargo xtask codegen` to regenerate Rust types. Hand-written code imports from the generated modules. The sync test runs as part of `cargo test` and compares the freshly generated output to the committed `src/transport/protocol_generated.rs` and `src/config_generated.rs`.
+- **Patterns to follow:** Contract-first API design. Schema-driven generation to prevent drift.
+- **Test scenarios:**
+  - `cargo xtask codegen` produces byte-identical output to the committed generated files when schemas are unchanged.
+  - Changing a schema field type causes `tests/schema_sync.rs` to fail until `cargo xtask codegen` is rerun.
+  - Unknown JSON-RPC method in a request is rejected with `-32601` (validates against `schemas/jsonrpc.json`).
+  - Config TOML that violates `schemas/config.json` is rejected at load time.
+- **Verification:** `cargo test` passes, including `tests/schema_sync.rs`.
+
+### U14. Diagnostics, metrics, dev-env compatibility, and last-run report
+
+- **Goal:** Give agents structured, machine-parseable feedback on daemon health, runtime metrics, external-service compatibility, and post-run state.
+- **Requirements:** R31, R35, R36, R37
+- **Dependencies:** U1, U9a, U9b
+- **Files:**
+  - `src/diagnostics.rs` — `Diagnostics` struct aggregating health snapshots and metrics; `flush_report(path)` writes `$DATA_DIR/reports/latest.json`.
+  - `src/admin.rs` — `diagnose` subcommand with `--format json`.
+  - `src/transport/protocol.rs` — `agent.metrics` JSON-RPC method/notification.
+  - `tests/diagnostics.rs` — tests for report flushing, metrics shape, and service-version probing.
+  - `docs/dev-env.md` — instructions for starting `pacto-dev-env` and running gated integration tests.
+- **Approach:** The daemon maintains an internal `Diagnostics` snapshot updated by the event loop. `agent.metrics` returns the current snapshot. On shutdown and every 30 seconds during runtime, the snapshot is flushed to `$DATA_DIR/reports/latest.json`. `pacto-bot-admin diagnose --format json` reads either the live daemon (when running) or the last-run report (when stopped). Service-version probing queries health/version endpoints exposed by `pacto-dev-env` containers and compares them against `schemas/service-compatibility.json`.
+- **Patterns to follow:** Prometheus-style counters, structured JSON diagnostics, periodic checkpoint flushing.
+- **Test scenarios:**
+  - `agent.metrics` returns a JSON object whose keys are a superset of the stable Phase 1 keys.
+  - `pacto-bot-admin diagnose --format json` parses successfully and includes `config_valid`, `lock_acquired`, `bots`, `handlers`, and `errors` fields.
+  - Daemon shutdown writes `$DATA_DIR/reports/latest.json` with `health.status == "stopped_cleanly"`.
+  - Report survives an unclean `SIGKILL` if the daemon had flushed within the last 30 seconds.
+  - Service-version mismatch against `pacto-dev-env` produces a warning but does not block startup.
+- **Verification:** `cargo test` for in-process diagnostics. Manual test against running `pacto-dev-env` for version probing.
+
+### U15. Secret-redaction and security-invariant tests
+
+- **Goal:** Prove that sensitive values never leak through logs, error responses, compiled artifacts, or memory dumps.
+- **Requirements:** R6, R34
+- **Dependencies:** U1, U2, U5
+- **Files:**
+  - `tests/support/secret_scan.rs` — helpers to capture logs, error responses, binary strings, and simulated core dumps.
+  - `tests/secret_redaction.rs` — tests that feed synthetic nsec, bunker URI, and HTTP token through every sensitive code path and assert no leakage.
+  - `deny.toml` / `clippy.toml` — lint configuration banning plain `String` for secrets and requiring `secrecy::SecretString`/`Zeroizing`.
+- **Approach:** Define a `Sensitive` test fixture containing unique markers. For each of logs, JSON-RPC errors, the release binary `strings` output, and a ptrace/gcore memory snapshot, assert none of the markers appear. The test suite runs against mock services only and is gated to skip core-dump simulation on platforms where it is unsupported.
+- **Patterns to follow:** Defense-in-depth secret hygiene; fail-closed linting; deterministic property tests for redaction.
+- **Test scenarios:**
+  - Startup logs for a bot with `nsec` backend contain the warning but not the nsec value.
+  - Bunker connection error does not include the bunker URI in its message.
+  - HTTP 401 response body does not echo the received token.
+  - `strings target/release/pacto-bot-api | grep <marker>` returns no matches for any synthetic secret marker.
+  - Simulated core dump after loading a test nsec contains no nsec marker.
+  - Adding a `println!("{}", token)` causes clippy/deny to fail in CI.
+- **Verification:** `cargo test` passes, including `tests/secret_redaction.rs`. `cargo clippy` and `cargo deny check` pass.
+
 ## Scope Boundaries
 
 ### Deferred to Phase 2
@@ -841,7 +1011,7 @@ pacto-bot-api/
 
 ## Open Questions
 
-- **OQ1. NIP-46 bunker availability for testing.** Is there a lightweight, scriptable NIP-46 bunker suitable for integration tests? Options: `nostr-connect` in Docker, a mock bunker, or `nsecbunker` with a test account. Resolution needed before U11 integration tests.
+- **OQ1. NIP-46 bunker availability for testing.** *Resolution:* Use the `pacto-dev-env` Docker environment (https://github.com/covenant-gov/pacto-dev-env) for real-bunker integration tests, and the in-process `tests/support/mock_bunker.rs` for fast, Docker-free `cargo test` runs.
 - **OQ2. mdk_core and Alloy availability.** `mdk_core` and `alloy` dependencies are referenced for Phase 2/3 features (MLS, governance) but may not be published crates when Phase 1 starts. Confirm whether the daemon uses published versions, git dependencies, or stubs in Phase 1.
 - **OQ3. Handler authentication.** Currently the Unix socket permissions (`0o600`) are the only auth for the Unix transport in Phase 1. The HTTP transport (when enabled with `--enable-http`) requires the `X-Pacto-Bot-Secret` header in Phase 1. Add stronger handler authentication for the Unix socket or remote handlers in Phase 2.
 - **OQ4. Phase-2 handler authentication mechanism.** What mechanism should verify handler identity independently of transport in Phase 2: mTLS client certificates, per-handler HMAC tokens, or Linux peer credentials/SCM_CREDENTIALS?
@@ -850,6 +1020,12 @@ pacto-bot-api/
 - **OQ7. Key management integration.** Should Phase 2 support reading the nsec from a named pipe/fifo or a key-management integration (e.g., macOS Keychain, Linux kernel keyring) instead of a file or environment variable?
 - **OQ8. Fine-grained capabilities.** Should Phase 2 support per-recipient, per-conversation, or per-action capability grants (e.g., a handler may only reply to existing DMs but not initiate new ones)?
 - **OQ9. Per-bot aggregate rate limits.** Should rate limits be enforced per-bot (aggregate across handlers) in addition to per-handler, and what are appropriate defaults for bunker signing requests versus relay publishes?
+- **OQ10. Schema source of truth.** *Resolution:* JSON Schema in `schemas/` is the source of truth; Rust types are generated via `cargo xtask codegen` and checked by `tests/schema_sync.rs`.
+- **OQ11. Agent build gate.** *Resolution:* The agent build gate is `cargo test`. `xtask check` may be added later as a convenience wrapper, but the canonical command is `cargo test`.
+- **OQ12. dev-env coupling.** *Resolution:* Deferred. The daemon does not own the dev-env. `docs/dev-env.md` documents how to start `pacto-dev-env` and run gated integration tests. Service-version probing compares detected versions against `schemas/service-compatibility.json`.
+- **OQ13. Metrics stability.** *Resolution:* `agent.metrics` uses a stable, unversioned, flat schema for Phase 1. New keys may be added; existing keys and types will not change.
+- **OQ14. Secret-scan scope.** *Resolution:* The secret-redaction suite covers logs, JSON-RPC error responses, compiled binary `strings` output, and core-dump simulation (platform-permitting).
+- **OQ15. Agent feedback channel.** *Resolution:* Both live API (`agent.metrics`, `pacto-bot-admin diagnose --format json`) and disk report (`$DATA_DIR/reports/latest.json`) are supported.
 
 ---
 
