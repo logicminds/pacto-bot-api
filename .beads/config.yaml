@@ -6,3 +6,5 @@ repos:
 export.auto: true
 
 sync.remote: "git+ssh://git@github.com/logicminds/pacto-bot-api.git"
+
+federation.remote: "https://doltremoteapi.dolthub.com/opselite/pacto-bot-api"
