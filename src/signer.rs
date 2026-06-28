@@ -42,6 +42,7 @@ pub trait Signer: Send + Sync {
 }
 
 /// Concrete signer backend selected from configuration.
+#[derive(Clone)]
 pub enum SignerBackend {
     /// Dev-only local nsec key.
     LocalKey(LocalKey),
@@ -143,6 +144,7 @@ impl Signer for SignerBackend {
 }
 
 /// Dev-only local nsec signer.
+#[derive(Clone)]
 pub struct LocalKey {
     /// The parsed nostr keys.
     keys: ZeroizingKeys,
@@ -210,10 +212,11 @@ impl Signer for LocalKey {
 ///
 /// `#[zeroize(skip)]` means the inner `Keys` bytes are not cleared by this
 /// wrapper; any clearing depends on `nostr::Keys` internals.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Zeroize, ZeroizeOnDrop, Clone)]
 struct ZeroizingKeys(#[zeroize(skip)] Keys);
 
 /// NIP-46 bunker connection details.
+#[derive(Clone)]
 pub struct BunkerConnection {
     /// Parsed bunker URI metadata.
     #[allow(dead_code)]

@@ -19,7 +19,7 @@ pub fn generate_nsec_bot(id: &str) -> Result<(BotConfig, String), Box<dyn Error>
         id: id.to_string(),
         npub,
         signing: SigningConfig::Nsec { nsec: nsec.clone() },
-        relays: vec![],
+        relays: vec!["wss://127.0.0.1:65535".to_string()],
         capabilities: vec!["ReadMessages".to_string()],
     };
     Ok((bot, nsec))
@@ -56,7 +56,11 @@ pub fn make_config(
     bots: Vec<BotConfig>,
 ) -> Result<PathBuf, Box<dyn Error>> {
     let data_dir = dir.path().to_string_lossy();
-    let mut content = format!("[daemon]\ndata_dir = {:?}\n\n", data_dir);
+    let socket_path = dir.path().join("pacto-bot-api.sock");
+    let mut content = format!(
+        "[daemon]\ndata_dir = {:?}\nsocket_path = {:?}\n\n",
+        data_dir, socket_path
+    );
 
     for bot in bots {
         content.push_str("[[bots]]\n");
@@ -150,5 +154,66 @@ pub fn write_loose_config(path: &Path, content: &str) -> Result<(), Box<dyn Erro
         perms.set_mode(0o644);
         fs::set_permissions(path, perms)?;
     }
+    Ok(())
+}
+
+use std::process::{Child, Stdio};
+use std::time::Duration;
+
+/// Path to the daemon binary for integration tests.
+pub fn daemon_bin_path() -> Result<PathBuf, Box<dyn Error>> {
+    if let Some(path) = std::env::var_os("CARGO_BIN_EXE_pacto-bot-api") {
+        return Ok(PathBuf::from(path));
+    }
+    let cmd = assert_cmd::Command::cargo_bin("pacto-bot-api")?;
+    Ok(cmd.get_program().into())
+}
+
+/// Spawn the daemon with `config` and wait until its Unix socket appears,
+/// which indicates the transport layer is bound and the daemon is ready.
+///
+/// The caller is responsible for killing the returned child.
+pub async fn spawn_daemon_until_ready(config: &Path) -> Result<Child, Box<dyn std::error::Error>> {
+    let socket_path = config
+        .parent()
+        .ok_or("config has no parent directory")?
+        .join("pacto-bot-api.sock");
+
+    let mut child = std::process::Command::new(daemon_bin_path()?)
+        .arg("--config")
+        .arg(config)
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let start = tokio::time::Instant::now();
+    loop {
+        if start.elapsed() > Duration::from_secs(15) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("daemon did not become ready".into());
+        }
+
+        if socket_path.exists() {
+            return Ok(child);
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Send SIGINT to a daemon child and wait for it to exit cleanly.
+///
+/// This allows coverage data and shutdown hooks to flush, unlike SIGKILL.
+pub async fn shutdown_daemon(mut child: Child) -> Result<(), Box<dyn std::error::Error>> {
+    let pid = child.id();
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(pid as i32),
+        nix::sys::signal::Signal::SIGINT,
+    )?;
+
+    let _ = tokio::time::timeout(Duration::from_secs(5), async {
+        let _ = child.wait();
+    })
+    .await;
     Ok(())
 }
