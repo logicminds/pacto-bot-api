@@ -35,6 +35,17 @@ Project tooling:
 - `deny.toml` — license and audit policy for `cargo-deny`.
 - `xtask/` — project automation such as schema/codegen tasks (`cargo xtask codegen`).
 
+## Git hooks
+
+A pre-commit hook is available in `scripts/pre-commit.sh`. It runs the Beads pre-commit hook (if installed) and checks Rust formatting with `cargo fmt --check`.
+
+Install it:
+
+```bash
+cp scripts/pre-commit.sh .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
 ## Running the daemon
 
 ```bash
