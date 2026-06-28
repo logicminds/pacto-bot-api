@@ -121,6 +121,18 @@ cargo test --test schema_sync
 
 The canonical API contract lives in `schemas/`. Rust types are generated from these schemas, and `tests/schema_sync.rs` ensures they stay in sync.
 
+### Requirement coverage
+
+Every requirement R1–R37 in the implementation plan must have a covering test or an explicit justification. The coverage mapping lives in `requirements/coverage.json`.
+
+```bash
+# Generate requirements/report.md and requirements/report.json
+cargo xtask coverage
+
+# Enforce coverage as part of the test suite
+cargo test --test requirement_coverage
+```
+
 ## Configuring a bot
 
 Copy the example config:
