@@ -200,8 +200,8 @@ impl LocalKey {
         let mut secret_bytes = Box::new(Zeroizing::new([0u8; 32]));
         let hex_ok = hex::decode_to_slice(nsec, secret_bytes.as_mut().as_mut()).is_ok();
         if !hex_ok {
-            let (_, data) = bech32::decode(nsec)
-                .map_err(|_| DaemonError::Config("invalid nsec".into()))?;
+            let (_, data) =
+                bech32::decode(nsec).map_err(|_| DaemonError::Config("invalid nsec".into()))?;
             if data.len() != 32 {
                 return Err(DaemonError::Config("invalid nsec length".into()));
             }

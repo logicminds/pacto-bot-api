@@ -39,10 +39,10 @@ source .venv/bin/activate
 pip install pytest websockets
 ```
 
-Or install from the repo root:
+Or install the example dependencies from the repository root:
 
 ```bash
-pip install -r requirements.txt
+pip install -r examples/requirements.txt
 ```
 
 ## Running the echo handler
