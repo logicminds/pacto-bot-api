@@ -51,7 +51,7 @@ The following requirements were tagged directly in test source files:
 ## Coverage by Requirement
 
 | ID | Summary | Tests | Sources | Justification | Status |
-|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|
 | R1 | The daemon exposes a JSON-RPC 2.0 API over a Unix domain socket (`$PACT_DATA_DIR/pacto-bot-api.sock`) with `0o600` permissions. Unix socket authentication is kernel file-permission only; handler id... | tests/transport_unix.rs<br>tests/integration_test.rs | src/transport/unix.rs | — | ✅ covered |
 | R2 | The daemon exposes the same JSON-RPC 2.0 API over localhost HTTP (`127.0.0.1:9800`), bound to loopback only. The HTTP transport requires an `X-Pacto-Bot-Secret` header on every request. The secret ... | tests/transport_http.rs<br>tests/integration_test.rs | src/transport/http.rs | — | ✅ covered |
 | R3 | The API uses newline-delimited JSON frames (one JSON-RPC message per line, `\n` terminated). No length prefix. Maximum frame size is 1 MB; connections sending larger frames are dropped. The transpo... | tests/transport_unix.rs<br>tests/transport_http.rs | src/transport/unix.rs<br>src/transport/http.rs<br>src/transport/mod.rs | — | ✅ covered |

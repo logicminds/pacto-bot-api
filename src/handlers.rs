@@ -99,7 +99,7 @@ impl HandlerRef {
             JsonRpcMessage::notification("agent.status", Some(serde_json::to_value(&params)?));
         match &self.connection {
             Some(conn) => conn.send(msg),
-            None => Err(DaemonError::HandlerNotRegistered),
+            None => Ok(()),
         }
     }
 
@@ -109,7 +109,7 @@ impl HandlerRef {
             JsonRpcMessage::notification("agent.metrics", Some(serde_json::to_value(response)?));
         match &self.connection {
             Some(conn) => conn.send(msg),
-            None => Err(DaemonError::HandlerNotRegistered),
+            None => Ok(()),
         }
     }
 }

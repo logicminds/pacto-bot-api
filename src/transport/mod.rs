@@ -44,7 +44,7 @@ pub(crate) enum TransportEvent {
         oneshot::Sender<Result<Option<JsonRpcMessage>, DaemonError>>,
     ),
     /// A transport connection ended. The contained handler_id (if any) should
-    /// be unregistered.
+    /// be disconnected (live connection removed, persisted registration kept).
     Disconnect(Option<String>),
 }
 
@@ -223,13 +223,7 @@ async fn dispatch_consumer(
                 let _ = resp_tx.send(resp);
             }
             TransportEvent::Disconnect(Some(handler_id)) => {
-                if let Err(e) = dispatch.unregister_handler(&handler_id).await {
-                    tracing::warn!(
-                        handler_id = %handler_id,
-                        error = %e,
-                        "failed to unregister disconnected handler"
-                    );
-                }
+                dispatch.disconnect_handler(&handler_id).await;
             }
             TransportEvent::Disconnect(None) => {}
         }

@@ -239,7 +239,7 @@ def write_markdown(report: dict[str, Any]) -> None:
             "## Coverage by Requirement",
             "",
             "| ID | Summary | Tests | Sources | Justification | Status |",
-            "|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|",
         ]
     )
 
