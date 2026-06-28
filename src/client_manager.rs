@@ -1,6 +1,9 @@
 use crate::bot_state::BotState;
 use crate::config::DaemonConfig;
 use crate::errors::DaemonError;
+
+#[cfg(test)]
+use secrecy::SecretString;
 use crate::handlers::HandlerRegistry;
 use crate::nostr::NostrClient;
 use crate::signer::Signer;
@@ -104,9 +107,7 @@ mod tests {
         BotConfig {
             id: id.into(),
             npub: keys.public_key().to_bech32().unwrap(),
-            signing: SigningConfig::Nsec {
-                nsec: keys.secret_key().to_bech32().unwrap(),
-            },
+            signing: SigningConfig::Nsec { nsec: SecretString::new(keys.secret_key().to_bech32().unwrap().into()) },
             relays: vec![],
             capabilities: vec!["ReadMessages".into()],
         }
@@ -192,7 +193,9 @@ mod tests {
                 id: "bad-bot".into(),
                 npub: "not-a-valid-npub".into(),
                 signing: SigningConfig::Nsec {
-                    nsec: nostr::Keys::generate().secret_key().to_bech32().unwrap(),
+                    nsec: SecretString::new(
+                        nostr::Keys::generate().secret_key().to_bech32().unwrap().into(),
+                    ),
                 },
                 relays: vec![],
                 capabilities: vec![],

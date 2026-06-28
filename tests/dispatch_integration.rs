@@ -12,6 +12,7 @@ use pacto_bot_api::events::{AgentEvent, EventType};
 use pacto_bot_api::handlers::ConnectionHandle;
 use pacto_bot_api::nostr::NostrClient;
 use pacto_bot_api::transport::protocol::JsonRpcMessage;
+use secrecy::SecretString;
 use tempfile::tempdir;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
@@ -24,9 +25,7 @@ fn bot_config(id: &str, keys: &nostr::Keys, capabilities: &[&str]) -> BotConfig 
     BotConfig {
         id: id.to_string(),
         npub: keys.public_key().to_bech32().unwrap(),
-        signing: SigningConfig::Nsec {
-            nsec: keys.secret_key().to_bech32().unwrap(),
-        },
+        signing: SigningConfig::Nsec { nsec: SecretString::new(keys.secret_key().to_bech32().unwrap().into()) },
         relays: vec![],
         capabilities: capabilities.iter().map(|s| s.to_string()).collect(),
     }

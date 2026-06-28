@@ -17,6 +17,9 @@ use crate::events::{AgentEvent, EventType};
 use crate::handlers::ConnectionHandle;
 use crate::transport::protocol::{JsonRpcMessage, Method, MetricsResponse, parse_method};
 
+#[cfg(test)]
+use secrecy::SecretString;
+
 /// Maximum time to wait for handler responses before advancing the cursor.
 const DISPATCH_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -685,9 +688,7 @@ mod tests {
         BotConfig {
             id: id.to_string(),
             npub: keys.public_key().to_bech32().unwrap(),
-            signing: SigningConfig::Nsec {
-                nsec: keys.secret_key().to_bech32().unwrap(),
-            },
+            signing: SigningConfig::Nsec { nsec: SecretString::new(keys.secret_key().to_bech32().unwrap().into()) },
             relays: vec![],
             capabilities: capabilities.iter().map(|s| s.to_string()).collect(),
         }

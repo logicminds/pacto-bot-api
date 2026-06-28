@@ -9,6 +9,9 @@ use pacto_bot_api::config::{BotConfig, DaemonConfig, SigningConfig};
 use pacto_bot_api::errors::DaemonError;
 use pacto_bot_api::signer::{Signer, SignerBackend};
 use rusqlite::Connection;
+
+#[cfg(test)]
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
@@ -856,9 +859,7 @@ mod tests {
         BotConfig {
             id: id.to_string(),
             npub: npub.to_string(),
-            signing: SigningConfig::Nsec {
-                nsec: nsec.to_string(),
-            },
+            signing: SigningConfig::Nsec { nsec: SecretString::new(nsec.to_string().into()) },
             relays: vec!["wss://relay.example.com".to_string()],
             capabilities: vec!["ReadMessages".to_string()],
         }
@@ -904,19 +905,19 @@ mod tests {
     fn signing_backend_label_values() {
         assert_eq!(
             signing_backend_label(&SigningConfig::Nsec {
-                nsec: "x".to_string()
+                nsec: SecretString::new("x".into())
             }),
             "nsec"
         );
         assert_eq!(
             signing_backend_label(&SigningConfig::BunkerLocal {
-                uri: "x".to_string()
+                uri: SecretString::new("x".into())
             }),
             "bunker_local"
         );
         assert_eq!(
             signing_backend_label(&SigningConfig::BunkerRemote {
-                uri: "x".to_string()
+                uri: SecretString::new("x".into())
             }),
             "bunker_remote"
         );

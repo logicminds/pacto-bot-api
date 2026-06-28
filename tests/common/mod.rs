@@ -6,6 +6,7 @@ use pacto_bot_api::config::{BotConfig, SigningConfig};
 use pacto_bot_api::db::Database;
 use pacto_bot_api::events::EventType;
 use pacto_bot_api::handlers::{ConnectionHandle, HandlerRef};
+use secrecy::{ExposeSecret, SecretString};
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,7 +19,7 @@ pub fn generate_nsec_bot(id: &str) -> Result<(BotConfig, String), Box<dyn Error>
     let bot = BotConfig {
         id: id.to_string(),
         npub,
-        signing: SigningConfig::Nsec { nsec: nsec.clone() },
+        signing: SigningConfig::Nsec { nsec: SecretString::new(nsec.clone().into()) },
         relays: vec!["wss://127.0.0.1:65535".to_string()],
         capabilities: vec!["ReadMessages".to_string()],
     };
@@ -44,7 +45,7 @@ pub fn generate_bunker_bot(id: &str, match_npub: bool) -> Result<BotConfig, Box<
     Ok(BotConfig {
         id: id.to_string(),
         npub,
-        signing: SigningConfig::BunkerLocal { uri },
+        signing: SigningConfig::BunkerLocal { uri: SecretString::new(uri.into()) },
         relays: vec![],
         capabilities: vec![],
     })
@@ -70,19 +71,19 @@ pub fn make_config(
             SigningConfig::Nsec { nsec } => {
                 content.push_str(&format!(
                     "signing = {{ backend = \"nsec\", nsec = {:?} }}\n",
-                    nsec
+                    nsec.expose_secret()
                 ));
             }
             SigningConfig::BunkerLocal { uri } => {
                 content.push_str(&format!(
                     "signing = {{ backend = \"bunker_local\", uri = {:?} }}\n",
-                    uri
+                    uri.expose_secret()
                 ));
             }
             SigningConfig::BunkerRemote { uri } => {
                 content.push_str(&format!(
                     "signing = {{ backend = \"bunker_remote\", uri = {:?} }}\n",
-                    uri
+                    uri.expose_secret()
                 ));
             }
         }

@@ -46,7 +46,7 @@ fn test_bunker_unreachable_or_invalid() -> Result<(), Box<dyn Error>> {
         id: "echo-bot".to_string(),
         npub: "npub1invalid".to_string(),
         signing: pacto_bot_api::config::SigningConfig::BunkerLocal {
-            uri: "not-a-bunker-uri".to_string(),
+            uri: pacto_bot_api::secrecy::SecretString::new("not-a-bunker-uri".into()),
         },
         relays: vec![],
         capabilities: vec![],
