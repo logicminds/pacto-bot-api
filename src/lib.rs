@@ -1,6 +1,9 @@
 pub mod bot_state;
 pub mod bunker;
 pub mod client_manager;
+
+pub use bot_state::BotState;
+pub use client_manager::ClientManager;
 pub mod config;
 pub mod config_generated;
 pub mod db;

@@ -1,6 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::io::Write;
+
+mod common;
 
 #[test]
 fn daemon_help_prints_usage() {
@@ -24,32 +25,17 @@ fn admin_help_prints_usage() {
         .stdout(predicate::str::contains("validate-config"));
 }
 
-#[test]
-fn daemon_config_flag_overrides_default() {
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    file.write_all(
-        br#"
-[[bots]]
-id = "echo-bot"
-npub = "npub1a"
-signing = { backend = "nsec", nsec = "nsec1a" }
-"#,
-    )
-    .unwrap();
-    let path = file.path().to_path_buf();
+#[tokio::test]
+async fn daemon_config_flag_overrides_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let (bot, _nsec) = common::generate_nsec_bot("echo-bot").unwrap();
+    let path = common::make_config(&dir, vec![bot]).unwrap();
 
-    #[cfg(unix)]
-    {
-        use std::fs;
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&path).unwrap().permissions();
-        perms.set_mode(0o600);
-        fs::set_permissions(&path, perms).unwrap();
-    }
+    let child = common::spawn_daemon_until_ready(&path)
+        .await
+        .expect("daemon should become ready");
 
-    let mut cmd = Command::cargo_bin("pacto-bot-api").unwrap();
-    cmd.arg("--config").arg(&path);
-    cmd.assert().success();
+    common::shutdown_daemon(child).await.unwrap();
 }
 
 #[test]
