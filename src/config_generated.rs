@@ -33,4 +33,3 @@ pub struct BotConfigGenerated {
     /// signing
     pub signing: serde_json::Value,
 }
-

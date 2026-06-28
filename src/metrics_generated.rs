@@ -28,4 +28,3 @@ pub struct MetricsPayloadGenerated {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uptime_seconds: Option<u64>,
 }
-
