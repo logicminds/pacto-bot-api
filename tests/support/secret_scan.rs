@@ -11,6 +11,7 @@ use std::process::Command;
 use parking_lot::Mutex;
 use tracing_subscriber::fmt::MakeWriter;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 /// A set of unique synthetic secret markers used to detect leaks.
 ///
@@ -34,16 +35,31 @@ impl SensitiveFixture {
     pub fn new() -> Self {
         let first = Uuid::new_v4().as_simple().to_string();
         let second = Uuid::new_v4().as_simple().to_string();
-        let nsec_marker = format!("{first}{second}");
-        let nsec_marker_bytes: [u8; 32] = hex::decode(&nsec_marker)
-            .expect("UUID simple form is hex")
-            .try_into()
-            .expect("64 hex chars decode to 32 bytes");
+
+        // Build the 64-character nsec marker in a single heap allocation so the
+        // only full copy is the live buffer.
+        let mut nsec_marker = String::with_capacity(64);
+        nsec_marker.push_str(&first);
+        nsec_marker.push_str(&second);
+
+        // Decode into a zeroizing temporary so the raw secret bytes are not
+        // left behind in a freed `Vec`.
+        let mut nsec_bytes_buf = Zeroizing::new([0u8; 32]);
+        hex::decode_to_slice(&nsec_marker, nsec_bytes_buf.as_mut())
+            .expect("UUID simple form is hex");
+        let nsec_marker_bytes = *nsec_bytes_buf;
+
+        let bunker_uuid = Uuid::new_v4().as_simple().to_string();
+        let bunker_uri_marker = String::from("pacto-test-bunker-") + &bunker_uuid;
+
+        let token_uuid = Uuid::new_v4().as_simple().to_string();
+        let http_token_marker = String::from("pacto-test-token-") + &token_uuid;
+
         Self {
             nsec_marker,
             nsec_marker_bytes,
-            bunker_uri_marker: format!("pacto-test-bunker-{}", Uuid::new_v4()),
-            http_token_marker: format!("pacto-test-token-{}", Uuid::new_v4()),
+            bunker_uri_marker,
+            http_token_marker,
         }
     }
 }

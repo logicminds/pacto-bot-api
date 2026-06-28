@@ -1631,6 +1631,7 @@ dependencies = [
  "assert_cmd",
  "async-trait",
  "axum",
+ "bech32",
  "chrono",
  "clap",
  "fs2",

@@ -23,7 +23,7 @@ use nostr_sdk::RelayOptions;
 use secrecy::ExposeSecret;
 #[cfg(test)]
 use secrecy::SecretString;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 /// Abstract signer used by the daemon to obtain public keys and sign events.
 #[async_trait::async_trait]
@@ -164,13 +164,22 @@ impl Signer for SignerBackend {
 }
 
 /// Dev-only local nsec signer.
-#[derive(Clone)]
 pub struct LocalKey {
     /// Cached public key derived from the secret.
     public_key: PublicKey,
-    /// Raw secret key bytes. Held in a [`Zeroizing`] container so the key
-    /// material is cleared when the signer is dropped.
-    secret_bytes: Zeroizing<[u8; 32]>,
+    /// Raw secret key bytes. Held in a heap-allocated [`Zeroizing`] container
+    /// so the key material is cleared when the signer is dropped and no
+    /// unzeroed copy remains on the caller's stack.
+    secret_bytes: Box<Zeroizing<[u8; 32]>>,
+}
+
+impl Clone for LocalKey {
+    fn clone(&self) -> Self {
+        Self {
+            public_key: self.public_key,
+            secret_bytes: self.secret_bytes.clone(),
+        }
+    }
 }
 
 impl std::fmt::Debug for LocalKey {
@@ -184,19 +193,43 @@ impl std::fmt::Debug for LocalKey {
 impl LocalKey {
     /// Parse a nsec hex or bech32 string into a local signer.
     pub fn parse(nsec: &str) -> Result<Self, DaemonError> {
-        let secret_key = SecretKey::parse(nsec)
-            .map_err(|e| DaemonError::Config(format!("invalid nsec: {e}")))?;
+        // Decode directly into a heap-allocated zeroizing byte buffer. Keeping
+        // the secret on the heap means the only live copy is inside the
+        // `Zeroizing` container; the temporary stack copies used to derive the
+        // public key are zeroed before the function returns.
+        let mut secret_bytes = Box::new(Zeroizing::new([0u8; 32]));
+        let hex_ok = hex::decode_to_slice(nsec, secret_bytes.as_mut().as_mut()).is_ok();
+        if !hex_ok {
+            let (_, data) = bech32::decode(nsec)
+                .map_err(|_| DaemonError::Config("invalid nsec".into()))?;
+            if data.len() != 32 {
+                return Err(DaemonError::Config("invalid nsec length".into()));
+            }
+            secret_bytes.as_mut().copy_from_slice(&data);
+            // Zeroize the bech32 decode buffer before it is freed.
+            let _ = Zeroizing::new(data);
+        }
+
+        // Copy the secret to the stack for public-key derivation, then zero all
+        // copies that are not the live heap buffer.
+        let mut temp = [0u8; 32];
+        temp.copy_from_slice(secret_bytes.as_ref().as_ref());
         let secp = Secp256k1::new();
+        let mut secret_key = SecretKey::from_slice(&temp)
+            .map_err(|e| DaemonError::Config(format!("invalid nsec: {e}")))?;
         let (xonly, _parity) = secret_key.x_only_public_key(&secp);
+        secret_key.non_secure_erase();
+        temp.zeroize();
+
         Ok(Self {
             public_key: PublicKey::from(xonly),
-            secret_bytes: Zeroizing::new(secret_key.to_secret_bytes()),
+            secret_bytes,
         })
     }
 
     /// Reconstruct a temporary `Keys` from the zeroized secret bytes.
     fn keys(&self) -> Result<Keys, DaemonError> {
-        let secret_key = SecretKey::from_slice(self.secret_bytes.as_ref())
+        let secret_key = SecretKey::from_slice(self.secret_bytes.as_ref().as_ref())
             .map_err(|e| DaemonError::Nostr(format!("invalid secret key bytes: {e}")))?;
         Ok(Keys::new(secret_key))
     }
@@ -208,7 +241,7 @@ impl LocalKey {
     ///
     /// This helper is test-only and is stripped from release builds.
     pub fn secret_bytes(&self) -> &[u8] {
-        self.secret_bytes.as_ref()
+        self.secret_bytes.as_ref().as_ref()
     }
 }
 
