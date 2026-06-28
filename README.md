@@ -24,6 +24,8 @@ cd pacto-bot-api
 cargo build --release
 ```
 
+See [`BUILDING.md`](BUILDING.md) for cross-compilation instructions (macOS, Linux, Windows; x86_64 and arm64).
+
 Binaries:
 
 - `target/release/pacto-bot-api` — the daemon
