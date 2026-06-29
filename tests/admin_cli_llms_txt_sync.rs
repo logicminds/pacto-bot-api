@@ -10,7 +10,9 @@ fn llms_txt_matches_cli_output() -> Result<(), Box<dyn Error>> {
     let stdout = std::str::from_utf8(&output.get_output().stdout)?;
 
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let guide_path = Path::new(manifest_dir).join("docs").join("pacto-bot-admin-llms.txt");
+    let guide_path = Path::new(manifest_dir)
+        .join("docs")
+        .join("pacto-bot-admin-llms.txt");
     let committed = std::fs::read_to_string(&guide_path)
         .map_err(|e| format!("failed to read {}: {e}", guide_path.display()))?;
 

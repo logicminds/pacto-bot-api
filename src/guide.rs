@@ -20,7 +20,9 @@ pub fn render_llm_guide() -> String {
 
 fn render_overview(out: &mut String) {
     out.push_str("# Pacto Bot Operator's Guide\n\n");
-    out.push_str("This guide covers running and operating a `pacto-bot-api` daemon and its bots.\n");
+    out.push_str(
+        "This guide covers running and operating a `pacto-bot-api` daemon and its bots.\n",
+    );
     out.push_str("It is intended for bot operators who configure identities, manage state, and monitor health.\n\n");
     out.push_str("- The **admin CLI** (`pacto-bot-admin`) manages bot lifecycle, configuration, diagnostics, and state migration.\n");
     out.push_str("- The **daemon** (`pacto-bot-api`) is the long-lived runtime that connects to Nostr relays, handles NIP-17/44/59 DMs, and routes events to handler processes.\n");
@@ -109,13 +111,7 @@ pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<PUBKEY>?rel
     );
 }
 
-fn render_command(
-    out: &mut String,
-    name: &str,
-    description: &str,
-    examples: &str,
-    notes: &str,
-) {
+fn render_command(out: &mut String, name: &str, description: &str, examples: &str, notes: &str) {
     let _ = writeln!(out, "### `{name}`");
     out.push('\n');
     out.push_str(description);
@@ -213,8 +209,15 @@ mod tests {
     fn guide_includes_examples_for_every_subcommand() {
         let guide = render_llm_guide();
         for sub in [
-            "new", "publish-profile", "test-bunker", "export", "import",
-            "validate-config", "rotate-http-token", "diagnose", "status",
+            "new",
+            "publish-profile",
+            "test-bunker",
+            "export",
+            "import",
+            "validate-config",
+            "rotate-http-token",
+            "diagnose",
+            "status",
         ] {
             assert!(
                 guide.contains(&format!("pacto-bot-admin {sub}")),
