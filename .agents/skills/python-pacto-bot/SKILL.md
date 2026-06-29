@@ -1,14 +1,30 @@
-# pacto-python-bot
+# python-pacto-bot
 
-Use this skill when the user asks to write, scaffold, or modify a Python bot for the `pacto-bot-api` daemon using the generated SDK.
+Use this skill **only** when the user explicitly asks to write, scaffold, or modify a Python bot for the `pacto-bot-api` daemon using the generated `pacto_bot_api` SDK.
+
+This skill is **not** for generic bots, Discord bots, Slack bots, Telegram bots, or any other bot framework. If the user says "create a bot" without mentioning Pacto or `pacto_bot_api`, do **not** load this skill.
 
 ## Trigger phrases
 
-- "create a Python bot"
-- "write a pacto bot"
-- "add a bot example"
-- "handler in Python"
-- "pacto_bot_api SDK"
+- "create a python pacto bot"
+- "write a python bot for pacto-bot-api"
+- "pacto python bot"
+- "pacto_bot_api bot"
+- "pacto_bot_api SDK bot"
+- "add a pacto python example bot"
+- "pacto python handler"
+- "python bot using pacto_bot_api"
+
+## Disambiguation
+
+| User says | Load this skill? |
+|---|---|
+| "create a python pacto bot" | Yes |
+| "write a bot for pacto-bot-api" | Yes |
+| "pacto_bot_api SDK" | Yes |
+| "create a bot" | No — too generic |
+| "discord bot" / "slack bot" / "telegram bot" | No — wrong framework |
+| "rust bot" / "go bot" | No — wrong language |
 
 ## Canonical references
 
