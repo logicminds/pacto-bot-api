@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ideation: Automated Behavior Tests for pacto-bot-api</title>
+  <style>
+    :root {
+      --bg: #faf9f7;
+      --text: #1a1a1a;
+      --muted: #5a5a5a;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --accent-text: #1e40af;
+      --warn-soft: #fff7ed;
+      --warn-text: #9a3412;
+      --success-soft: #f0fdf4;
+      --success-text: #166534;
+      --border: #d4d4d4;
+      --card: #ffffff;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121212;
+        --text: #e5e5e5;
+        --muted: #a3a3a3;
+        --accent: #60a5fa;
+        --accent-soft: #1e293b;
+        --accent-text: #93c5fd;
+        --warn-soft: #2a1b0f;
+        --warn-text: #fdba74;
+        --success-soft: #0f291e;
+        --success-text: #86efac;
+        --border: #404040;
+        --card: #1a1a1a;
+        --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    header {
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0 0 0.75rem;
+      line-height: 1.25;
+    }
+    .meta {
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .meta strong { color: var(--text); }
+    h2 {
+      font-size: 1.25rem;
+      font-weight: 650;
+      margin: 2.5rem 0 1rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 1.75rem 0 0.75rem;
+    }
+    p { margin: 0.75rem 0; }
+    ul, ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+    li { margin: 0.35rem 0; }
+    code {
+      font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+      font-size: 0.85em;
+      background: rgba(0,0,0,0.05);
+      padding: 0.15rem 0.35rem;
+      border-radius: 4px;
+    }
+    @media (prefers-color-scheme: dark) {
+      code { background: rgba(255,255,255,0.08); }
+    }
+    .axis-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      list-style: none;
+      padding: 0;
+      margin: 1rem 0;
+    }
+    .axis-list li {
+      background: var(--accent-soft);
+      color: var(--accent-text);
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    .jump-list {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0 2rem;
+      box-shadow: var(--shadow);
+    }
+    .jump-list ol { margin: 0; padding-left: 1.25rem; }
+    .jump-list a { text-decoration: none; color: var(--accent); }
+    .jump-list a:hover { text-decoration: underline; }
+    .idea {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      box-shadow: var(--shadow);
+    }
+    .idea-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+    .idea-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    .idea-title {
+      font-size: 1.15rem;
+      font-weight: 650;
+      margin: 0;
+      flex: 1 1 auto;
+    }
+    .chip {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .chip-axis { background: var(--accent-soft); color: var(--accent-text); }
+    .chip-confidence { background: var(--success-soft); color: var(--success-text); }
+    .chip-complexity { background: var(--warn-soft); color: var(--warn-text); }
+    .field {
+      margin: 0.75rem 0;
+    }
+    .field-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .basis-tag {
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .basis-direct { color: var(--success-text); }
+    .basis-external { color: var(--accent-text); }
+    .basis-reasoned { color: var(--warn-text); }
+    .diagram {
+      margin: 1.25rem 0;
+      padding: 1rem;
+      background: rgba(0,0,0,0.02);
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+    @media (prefers-color-scheme: dark) {
+      .diagram { background: rgba(255,255,255,0.03); }
+    }
+    .diagram-caption {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .rejection-reason {
+      color: var(--muted);
+    }
+    footer.composition-signal {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="eyebrow">Ideation Artifact</div>
+      <h1>Automated Behavior Tests for pacto-bot-api</h1>
+      <div class="meta">
+        <strong>Date:</strong> 2026-06-28 ·
+        <strong>Topic:</strong> automated-behavior-tests ·
+        <strong>Mode:</strong> repo-grounded ·
+        <strong>Focus:</strong> ways to test against the build or run automated behavior tests
+      </div>
+    </header>
+
+    <section id="grounding">
+      <h2>Grounding Context</h2>
+      <p><strong>Project:</strong> <code>pacto-bot-api</code> is a Rust/Tokio daemon that multiplexes multiple Nostr bot identities onto one shared backend. Handlers connect via JSON-RPC&nbsp;2.0 over Unix socket or localhost HTTP. The daemon owns the <code>nostr-sdk</code> relay pool, NIP-46 bunkers, SQLite (<code>rusqlite</code>) persistence, and message routing.</p>
+      <p><strong>Existing test infrastructure:</strong> The project already has in-process <code>MockRelay</code> and <code>MockBunker</code> in <code>tests/support/</code>, Python pytest fixtures in <code>examples/</code> that spawn the real daemon, a dedicated <code>tests/secret_redaction.rs</code> suite, requirement traceability R1–R37 via <code>#[req(Rx)]</code> attributes, and a declared three-tier test strategy (fast in-process mocks → Docker-gated dev-env integration → property/chaos tests). However, <code>proptest</code> is a dev-dependency that is currently unused, the vendored <code>cargo-fuzz</code> skill has no <code>fuzz/</code> targets, and dev-env tests require a pre-running Docker environment.</p>
+      <p><strong>Schema-first design:</strong> Canonical schemas in <code>schemas/*.json</code> drive generated Rust types via <code>cargo xtask codegen</code>; <code>tests/schema_sync.rs</code> enforces that generated types stay in sync. This creates a natural hook for automated contract testing.</p>
+      <p><strong>Key pain points:</strong> Doc drift (AGENTS.md still claims no code exists), Docker-gated integration tests that are easy to skip, manual requirement-coverage and schema-sync steps, and happy-path-only mocks that hide resilience and security failures.</p>
+      <p><strong>External signals:</strong> Rust ecosystem tools such as <code>turmoil</code> and <code>madsim</code> enable deterministic network simulation; <code>cargo-fuzz</code> and <code>proptest</code> provide automated input-space exploration; <code>cargo-nextest</code> and <code>cargo-llvm-cov</code> are becoming standard for CI gating; and <code>testcontainers-rs</code> can self-start real backing services from tests.</p>
+    </section>
+
+    <section id="axes">
+      <h2>Topic Axes</h2>
+      <ul class="axis-list">
+        <li>Test fidelity layers</li>
+        <li>Handler-facing contract</li>
+        <li>Security invariants</li>
+        <li>CI &amp; developer feedback</li>
+        <li>External dependency simulation</li>
+      </ul>
+    </section>
+
+    <section id="ranked-ideas">
+      <h2>Ranked Ideas</h2>
+
+      <nav class="jump-list" aria-label="Jump to idea">
+        <div class="field-label">Jump to an idea</div>
+        <ol>
+          <li><a href="#idea-1">Deterministic network simulation for relay and bunker paths</a></li>
+          <li><a href="#idea-2">Promote Python examples/ to CI contract tests</a></li>
+          <li><a href="#idea-3">Property-based capability authorization matrix</a></li>
+          <li><a href="#idea-4">OpenRPC-driven contract test generator</a></li>
+          <li><a href="#idea-5">Negative-path NIP-46 bunker harness</a></li>
+          <li><a href="#idea-6">Coverage-guided fuzz targets for JSON-RPC and NIP-46 parsing</a></li>
+          <li><a href="#idea-7">Fast-fail schema and requirement-coverage gate in CI</a></li>
+        </ol>
+      </nav>
+
+      <article class="idea" id="idea-1">
+        <div class="idea-header">
+          <span class="idea-number">1</span>
+          <h3 class="idea-title">Deterministic network simulation for relay and bunker paths</h3>
+          <span class="chip chip-axis">External dependency simulation</span>
+          <span class="chip chip-confidence">Confidence 85%</span>
+          <span class="chip chip-complexity">Complexity High</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Use <code>turmoil</code> or <code>madsim</code> to run the daemon's relay and bunker clients over a deterministic virtual network. Inject partitions, latency spikes, and reconnects so timeout, reconnect, and cursor-recovery logic is exercised in the default fast test suite instead of only in Docker-gated dev-env tests.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>MockRelay</code> binds real TCP localhost and the daemon connects via <code>ws://</code>. <code>src/signer.rs</code> exposes <code>PACTO_BUNKER_TIMEOUT_SECS</code> and <code>src/diagnostics.rs</code> hard-codes a 3-second WebSocket probe timeout, both currently untested.</p>
+          <p><span class="basis-tag basis-external">external:</span> <code>turmoil</code> provides simulated Tokio network partitions, holds, and latency; <code>madsim</code> overrides <code>getrandom</code>/<code>clock_gettime</code> for full determinism.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>CI currently skips dev-env tests and the in-process mocks never fail, so resilience code ships without ever having been exercised under failure. A deterministic harness makes fault testing part of <code>cargo nextest run</code> rather than a separate, often-forgotten Docker step.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Requires abstracting the daemon's network stack behind a trait so it can use virtual TCP.</li>
+            <li>Initial harness setup is non-trivial and may need feature-gating.</li>
+            <li><code>madsim</code> replaces the async runtime, so production code paths need careful validation.</li>
+          </ul>
+        </div>
+        <div class="diagram">
+          <svg viewBox="0 0 600 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram showing daemon, virtual network, and mocks">
+            <rect x="40" y="40" width="130" height="140" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+            <text x="105" y="105" text-anchor="middle" font-size="13" font-weight="600" fill="var(--text)">pacto-bot-api</text>
+            <text x="105" y="125" text-anchor="middle" font-size="11" fill="var(--muted)">daemon</text>
+            <rect x="220" y="20" width="160" height="180" rx="8" fill="rgba(0,0,0,0.03)" stroke="var(--border)" stroke-width="2" stroke-dasharray="6 4"/>
+            <text x="300" y="45" text-anchor="middle" font-size="12" font-weight="600" fill="var(--muted)">Virtual network (turmoil / madsim)</text>
+            <rect x="250" y="70" width="100" height="50" rx="6" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+            <text x="300" y="95" text-anchor="middle" font-size="11" fill="var(--text)">MockRelay</text>
+            <text x="300" y="110" text-anchor="middle" font-size="10" fill="var(--muted)">partition / delay</text>
+            <rect x="250" y="140" width="100" height="50" rx="6" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+            <text x="300" y="165" text-anchor="middle" font-size="11" fill="var(--text)">MockBunker</text>
+            <text x="300" y="180" text-anchor="middle" font-size="10" fill="var(--muted)">timeout / drop</text>
+            <rect x="430" y="40" width="130" height="140" rx="8" fill="var(--warn-soft)" stroke="var(--warn-text)" stroke-width="2"/>
+            <text x="495" y="105" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">Deterministic</text>
+            <text x="495" y="125" text-anchor="middle" font-size="11" fill="var(--muted)">chaos schedules</text>
+            <path d="M170 100 L250 95" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+            <path d="M170 120 L250 165" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+            <path d="M350 95 L430 100" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+            <path d="M350 165 L430 120" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+            <defs>
+              <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="var(--accent)"/>
+              </marker>
+            </defs>
+          </svg>
+          <div class="diagram-caption">The daemon's network clients run over a virtual network so partitions, delays, and drops become reproducible tests.</div>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-2">
+        <div class="idea-header">
+          <span class="idea-number">2</span>
+          <h3 class="idea-title">Promote Python examples/ to CI contract tests</h3>
+          <span class="chip chip-axis">Handler-facing contract</span>
+          <span class="chip chip-confidence">Confidence 90%</span>
+          <span class="chip chip-complexity">Complexity Low</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Run <code>pytest examples/</code> in CI against a freshly-built daemon binary. The existing <code>examples/conftest.py</code> fixtures already spawn the daemon, register a handler, and drive JSON-RPC calls over the Unix socket.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>examples/conftest.py:244-324</code> spawns the daemon and registers a test handler; <code>examples/conftest.py:164-204</code> encodes the line-delimited JSON-RPC&nbsp;2.0 wire format; <code>schemas/jsonrpc.json</code> defines the canonical method catalog; <code>.github/workflows/ci.yml</code> currently has no Python/pytest job.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>Bot developers are expected to copy-paste these fixtures. If they drift from the Rust implementation, the first person to notice is a confused user, not CI. Running them in CI turns the examples into a living contract.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Adds a Python dependency to CI.</li>
+            <li>Example tests are slower than pure Rust unit tests.</li>
+            <li>Subprocess daemon startup can introduce CI flakiness if not carefully synchronized.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-3">
+        <div class="idea-header">
+          <span class="idea-number">3</span>
+          <h3 class="idea-title">Property-based capability authorization matrix</h3>
+          <span class="chip chip-axis">Security invariants</span>
+          <span class="chip chip-confidence">Confidence 85%</span>
+          <span class="chip chip-complexity">Complexity Medium</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Use <code>proptest</code> to generate combinations of handler registrations, bot capabilities, and JSON-RPC method calls, then assert that every unauthorized path returns <code>UnauthorizedBot</code> or the appropriate error and every authorized path succeeds.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>src/handlers.rs:236-258</code> validates requested capabilities against bot-granted capabilities; <code>src/handlers.rs:76-80</code> and <code>src/handlers.rs:224-234</code> implement authorization checks; <code>src/dispatch.rs:643-650</code> and <code>:685-691</code> enforce per-call capability checks; <code>Cargo.toml</code> lists <code>proptest = "1"</code> but no test uses it.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>Authorization matrices explode combinatorially; property testing systematically explores the space and documents the invariant that capability enforcement is never optional.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Needs a careful state-machine model to avoid false positives.</li>
+            <li>Shrinking long traces can be slow.</li>
+            <li>Requires modeling the full capability enum, which grows with new agent methods.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-4">
+        <div class="idea-header">
+          <span class="idea-number">4</span>
+          <h3 class="idea-title">OpenRPC-driven contract test generator</h3>
+          <span class="chip chip-axis">CI &amp; developer feedback</span>
+          <span class="chip chip-confidence">Confidence 80%</span>
+          <span class="chip chip-complexity">Complexity Medium</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Extend <code>cargo xtask codegen</code> to emit a <code>tests/jsonrpc_contract_generated.rs</code> file containing skeleton tests for every declared method: required params present, response shape matches schema, enum values exercised. Regenerate on schema changes and check in the generated file.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>xtask/src/codegen.rs:1-25</code> already generates Rust types from schemas; <code>tests/schema_sync.rs:1-33</code> enforces generated files stay in sync; <code>schemas/jsonrpc.json:12-47</code> defines the canonical method catalog.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>Makes the schema a living contract: any new method or param automatically acquires a baseline test; prevents "we added the field but never tested invalid/missing input" regressions.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Schemas do not list error codes today, so error-code generation is weaker.</li>
+            <li>Generated tests can be noisy if not carefully curated.</li>
+            <li>Adds a codegen step to every schema change.</li>
+          </ul>
+        </div>
+        <div class="diagram">
+          <svg viewBox="0 0 560 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schema to generated test flow">
+            <rect x="20" y="35" width="120" height="70" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+            <text x="80" y="75" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">schemas/jsonrpc.json</text>
+            <rect x="220" y="35" width="120" height="70" rx="6" fill="var(--card)" stroke="var(--border)" stroke-width="1.5"/>
+            <text x="280" y="70" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">cargo xtask</text>
+            <text x="280" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">codegen</text>
+            <rect x="420" y="35" width="120" height="70" rx="6" fill="var(--success-soft)" stroke="var(--success-text)" stroke-width="2"/>
+            <text x="480" y="70" text-anchor="middle" font-size="12" font-weight="600" fill="var(--text)">tests/jsonrpc</text>
+            <text x="480" y="88" text-anchor="middle" font-size="11" fill="var(--muted)">_contract_generated.rs</text>
+            <path d="M140 70 L220 70" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
+            <path d="M340 70 L420 70" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow2)"/>
+            <defs>
+              <marker id="arrow2" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="var(--accent)"/>
+              </marker>
+            </defs>
+          </svg>
+          <div class="diagram-caption">The OpenRPC catalog becomes the source for generated contract tests, just as it already is for generated protocol types.</div>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-5">
+        <div class="idea-header">
+          <span class="idea-number">5</span>
+          <h3 class="idea-title">Negative-path NIP-46 bunker harness</h3>
+          <span class="chip chip-axis">Security invariants</span>
+          <span class="chip chip-confidence">Confidence 90%</span>
+          <span class="chip chip-complexity">Complexity Medium</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Extend <code>MockBunker</code> from an auto-approving happy-path fake into a configurable adversary that can reject requests, return a mismatched public key, sign invalid events, drop connections mid-request, or delay responses past <code>PACTO_BUNKER_TIMEOUT_SECS</code>.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>tests/support/mock_bunker.rs:16-22</code> says the bunker auto-approves every request; <code>tests/support/mock_bunker.rs:45-68</code> shows <code>approve(...) -&gt; bool</code> always returns true; <code>src/signer.rs:219-223</code> marks NIP-46 signing as <code>TODO(#7y3)</code> with no negative-path coverage; <code>src/signer.rs:371-380</code> documents planned <code>verify_public_key</code>.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>A signer that always approves hides the failure modes that matter most for a remote bunker: a malicious or misconfigured bunker could sign with the wrong key, leak the URI in an error, or cause a hang. Negative tests are essential before exposing <code>BunkerRemote</code> to real users.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Requires modeling NIP-46 error responses the daemon should produce.</li>
+            <li>Some negative modes need careful teardown to avoid test flakiness.</li>
+            <li>May need a trait abstraction for signer backends to inject the adversary cleanly.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-6">
+        <div class="idea-header">
+          <span class="idea-number">6</span>
+          <h3 class="idea-title">Coverage-guided fuzz targets for JSON-RPC and NIP-46 parsing</h3>
+          <span class="chip chip-axis">Test fidelity layers</span>
+          <span class="chip chip-confidence">Confidence 85%</span>
+          <span class="chip chip-complexity">Complexity Medium</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Add <code>cargo-fuzz</code> targets that feed arbitrary bytes into <code>parse_frame</code>/<code>parse_message</code> and into the NIP-46 event parser, looking for panics, incorrect error codes, or secret material leakage. Run for a fixed duration in CI.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>src/transport/protocol.rs:7</code> defines <code>MAX_FRAME_BYTES</code>; <code>:117</code> defines <code>parse_message</code> on an untagged enum with four variants; <code>:365-367</code> tests the frame-size boundary but only one adjacent value; the vendored <code>cargo-fuzz</code> skill has no <code>fuzz/</code> targets.</p>
+          <p><span class="basis-tag basis-external">external:</span> <code>cargo-fuzz</code> with libFuzzer is the recommended Rust fuzzing harness for protocol parsers.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>The JSON-RPC boundary is the daemon's primary attack surface. Untrusted input from handlers and the network makes parser crashes and logic bugs cheap to find in CI before they become denial-of-service vectors.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Requires nightly Rust for cargo-fuzz.</li>
+            <li>Corpus management adds repo weight.</li>
+            <li>Needs careful seeding to avoid trivial crashes and to keep CI runtime bounded.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="idea" id="idea-7">
+        <div class="idea-header">
+          <span class="idea-number">7</span>
+          <h3 class="idea-title">Fast-fail schema and requirement-coverage gate in CI</h3>
+          <span class="chip chip-axis">CI &amp; developer feedback</span>
+          <span class="chip chip-confidence">Confidence 95%</span>
+          <span class="chip chip-complexity">Complexity Low</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Description</div>
+          <p>Add a lightweight CI job that runs <code>cargo xtask codegen --check</code> and a requirement-coverage check before the expensive test/coverage job, failing fast on stale generated types or missing <code>#[req(Rx)]</code> coverage.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Basis</div>
+          <p><span class="basis-tag basis-direct">direct:</span> <code>tests/schema_sync.rs:1-48</code> already enforces generated files match schemas; <code>Cargo.toml</code> includes the <code>xtask</code> workspace member; <code>DEVELOPMENT.md:85-101</code> lists <code>cargo xtask codegen</code> and <code>cargo xtask coverage</code> as manual steps; <code>.github/workflows/ci.yml</code> runs them inside the expensive test job.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Rationale</div>
+          <p>Manual schema and requirement sync are the most common "oops" fixes in schema-first projects. A fast gate gives developers actionable failure in seconds instead of after the full coverage job finishes.</p>
+        </div>
+        <div class="field">
+          <div class="field-label">Downsides</div>
+          <ul>
+            <li>Adds another CI job to maintain.</li>
+            <li>False positives if the check script is too strict.</li>
+            <li>Does not catch runtime behavior gaps, only structural ones.</li>
+          </ul>
+        </div>
+        <div class="diagram">
+          <svg viewBox="0 0 560 120" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CI pipeline with fast-fail gate">
+            <rect x="20" y="30" width="140" height="60" rx="6" fill="var(--warn-soft)" stroke="var(--warn-text)" stroke-width="2"/>
+            <text x="90" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text)">Fast-fail gate</text>
+            <text x="90" y="73" text-anchor="middle" font-size="10" fill="var(--muted)">codegen + req coverage</text>
+            <rect x="210" y="30" width="140" height="60" rx="6" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2"/>
+            <text x="280" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text)">Tests &amp; coverage</text>
+            <text x="280" y="73" text-anchor="middle" font-size="10" fill="var(--muted)">cargo llvm-cov</text>
+            <rect x="400" y="30" width="140" height="60" rx="6" fill="var(--success-soft)" stroke="var(--success-text)" stroke-width="2"/>
+            <text x="470" y="55" text-anchor="middle" font-size="11" font-weight="600" fill="var(--text)">Build artifacts</text>
+            <text x="470" y="73" text-anchor="middle" font-size="10" fill="var(--muted)">release binary</text>
+            <path d="M160 60 L210 60" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow3)"/>
+            <path d="M350 60 L400 60" stroke="var(--accent)" stroke-width="2" fill="none" marker-end="url(#arrow3)"/>
+            <defs>
+              <marker id="arrow3" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L9,3 z" fill="var(--accent)"/>
+              </marker>
+            </defs>
+          </svg>
+          <div class="diagram-caption">A lightweight gate catches schema and traceability drift before the expensive coverage job runs.</div>
+        </div>
+      </article>
+    </section>
+
+    <section id="rejection-summary">
+      <h2>Rejection Summary</h2>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 35%;">Idea</th>
+            <th>Reason rejected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1M handler stress test</td>
+            <td class="rejection-reason"><strong>Refuted.</strong> Scope overrun; daemon targets hundreds of bots, not millions; test would be slow/resource-heavy and UUID collisions are astronomically unlikely.</td>
+          </tr>
+          <tr>
+            <td>Universal tracing-captured secret-redaction scanner</td>
+            <td class="rejection-reason"><strong>Weak / duplicate.</strong> Duplicates existing <code>tests/secret_redaction.rs</code> with added complexity and subscriber overhead.</td>
+          </tr>
+          <tr>
+            <td>Rust <code>JsonRpcTestClient</code> fixture</td>
+            <td class="rejection-reason"><strong>Weak / duplicate.</strong> <code>tests/common/mod.rs</code> already provides <code>HandlerClient</code>, a reusable Rust JSON-RPC test client.</td>
+          </tr>
+          <tr>
+            <td>Record/replay handler sessions</td>
+            <td class="rejection-reason"><strong>Weak.</strong> Daemon state (registrations, rate limits, cursors) makes deterministic replay complex and costly relative to value.</td>
+          </tr>
+          <tr>
+            <td>Schema mutation tests</td>
+            <td class="rejection-reason"><strong>Weak.</strong> The daemon does not consume schemas at runtime; codegen-only mutation testing is of limited value.</td>
+          </tr>
+          <tr>
+            <td>Multi-language generated contract test clients</td>
+            <td class="rejection-reason"><strong>Weak / duplicate.</strong> Duplicates existing Rust <code>HandlerClient</code> and Python example fixtures.</td>
+          </tr>
+          <tr>
+            <td>Property-based state-machine tests for handler authorization</td>
+            <td class="rejection-reason"><strong>Merged into #3.</strong> The capability authorization matrix covers the same auth space more systematically.</td>
+          </tr>
+          <tr>
+            <td>Schema-driven JSON-RPC contract fuzzer</td>
+            <td class="rejection-reason"><strong>Merged into #6 and #4.</strong> Fuzz targets (#6) cover parser boundaries; the OpenRPC generator (#4) covers method/param contracts.</td>
+          </tr>
+          <tr>
+            <td>Programmable fault-injection modes for MockRelay/MockBunker</td>
+            <td class="rejection-reason"><strong>Merged into #1.</strong> Deterministic network simulation can incorporate the same fault schedules.</td>
+          </tr>
+          <tr>
+            <td>Self-enforcing requirement coverage test</td>
+            <td class="rejection-reason"><strong>Merged into #7.</strong> The fast-fail CI gate covers the same requirement-traceability check.</td>
+          </tr>
+          <tr>
+            <td>Deterministic chaos profile library</td>
+            <td class="rejection-reason"><strong>Merged into #1.</strong> Network simulation subsumes reusable chaos schedules.</td>
+          </tr>
+          <tr>
+            <td>Adversarial handler harness</td>
+            <td class="rejection-reason"><strong>Merged into #3.</strong> The capability matrix acts as a systematic adversary for authorization.</td>
+          </tr>
+          <tr>
+            <td>Unified authorization adversary</td>
+            <td class="rejection-reason"><strong>Merged into #3.</strong> Same combinatorial authorization coverage.</td>
+          </tr>
+          <tr>
+            <td>Self-starting dev-env integration via testcontainers</td>
+            <td class="rejection-reason"><strong>Strong but not selected.</strong> Lower priority than deterministic simulation (#1) and fuzz targets (#6); can be the next pick.</td>
+          </tr>
+          <tr>
+            <td>Filter-respecting relay mock with cursor property tests</td>
+            <td class="rejection-reason"><strong>Strong but not selected.</strong> Network simulation (#1) covers broader dependency simulation; cursor logic can be folded into the same harness.</td>
+          </tr>
+          <tr>
+            <td>Promote MockRelay to canonical conformance spec</td>
+            <td class="rejection-reason"><strong>Strong but not selected.</strong> Overlaps with #1 and related external-dependency work.</td>
+          </tr>
+          <tr>
+            <td>Zero-budget stdio behavior tests</td>
+            <td class="rejection-reason"><strong>Interesting but lower priority.</strong> Nice tactical win, but less impact than the selected survivors.</td>
+          </tr>
+          <tr>
+            <td>Zero-secret deterministic test mode</td>
+            <td class="rejection-reason"><strong>Interesting but lower priority.</strong> Best treated as part of implementing #3, #5, or #6 rather than a standalone direction.</td>
+          </tr>
+          <tr>
+            <td>Golden DDL snapshot for SQLite migrations</td>
+            <td class="rejection-reason"><strong>Narrow but good.</strong> Lower priority than the selected survivors.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="composition-signal">
+      Composed 2026-06-28 by ce-ideate from prompt: "I want to be able to test againt the build or run some sort of automated behavior tests what are some ways we could achieve this"
+    </footer>
+  </div>
+</body>
+</html>
