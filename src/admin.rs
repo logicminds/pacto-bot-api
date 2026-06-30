@@ -84,8 +84,16 @@ const NEW_AFTER_HELP: &str = r#"Examples:
   # Remote bunker backend
   pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<key>?relay=wss://relay.nsec.app
 
-  # Create a bot identity and scaffold a Python handler project
+  # Create a bot identity and scaffold a Python handler project.
+  # The project directory defaults to "echo-bot-project/" and the bot lives at
+  # "echo-bot-project/bots/echo-bot/".
   pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo
+
+  # Use a custom project directory name (creates "my-project/bots/echo-bot/")
+  pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo --project-name my-project
+
+  # Use a full project directory path
+  pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo --project-dir /path/to/my-project
 
 Valid capabilities:
   ReadMessages   Receive decrypted DMs and group messages
@@ -130,11 +138,16 @@ const STATUS_AFTER_HELP: &str = r#"Examples:
 "#;
 
 const SCAFFOLD_AFTER_HELP: &str = r#"Examples:
-  # Create a new bot identity and scaffold a Python handler project
+  # Create a new bot identity and scaffold a Python handler project.
+  # The project directory defaults to "echo-bot-project/" and the bot lives at
+  # "echo-bot-project/bots/echo-bot/".
   pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo
 
-  # Scaffold a project for an existing bot identity
+  # Scaffold a project for an existing bot identity (adds to current directory)
   pacto-bot-admin scaffold echo-bot --commands echo
+
+  # Scaffold a bot that calls external HTTP APIs
+  pacto-bot-admin scaffold price-bot --commands price
 
   # Add a second bot to an existing multi-bot project
   pacto-bot-admin scaffold price-bot --commands price
@@ -213,13 +226,31 @@ enum Command {
         #[arg(long)]
         no_tests: bool,
 
+        /// Generate the handler with HTTP client dependencies and tests.
+        #[arg(long)]
+        http: bool,
+
         /// Overwrite existing files without prompting.
         #[arg(long)]
         force: bool,
 
-        /// Project directory (default: `\u003cbot-id\u003e/` for new --scaffold, current dir for scaffold).
+        /// Project directory for the scaffolded project.
+        ///
+        /// This is the outer directory that contains `bots/`, `pacto-bot-api.toml`,
+        /// `docker-compose.yml`, and the vendored SDK. The bot itself lives at
+        /// `<project-dir>/bots/<bot-id>/`.
+        ///
+        /// For `new --scaffold`, defaults to `<bot-id>-project/`.
+        /// For `scaffold` (existing bot), defaults to the current directory.
         #[arg(long, value_name = "DIR")]
         project_dir: Option<PathBuf>,
+
+        /// Name of the outer project directory (convenience alias for `--project-dir`).
+        ///
+        /// Only used by `new --scaffold`. Defaults to `<bot-id>-project`.
+        /// Ignored when `--project-dir` is also supplied.
+        #[arg(long, value_name = "NAME")]
+        project_name: Option<String>,
     },
     /// Publish a bot profile (kind:0) event.
     #[command(after_help = PUBLISH_PROFILE_AFTER_HELP)]
@@ -287,6 +318,10 @@ enum Command {
         #[arg(long)]
         with_tests: bool,
 
+        /// Generate the handler with HTTP client dependencies and tests.
+        #[arg(long)]
+        http: bool,
+
         /// Overwrite existing files without prompting.
         #[arg(long)]
         force: bool,
@@ -335,8 +370,10 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             language,
             commands,
             no_tests,
+            http,
             force,
             project_dir,
+            project_name,
         } => cmd_new(
             bot_id.as_deref(),
             &backend,
@@ -347,14 +384,17 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             &language,
             &commands,
             !no_tests,
+            http,
             force,
             project_dir.as_deref(),
+            project_name.as_deref(),
         ),
         Command::Scaffold {
             bot_id,
             language,
             commands,
             with_tests,
+            http,
             force,
             project_dir,
         } => {
@@ -364,6 +404,7 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
                 &language,
                 &commands,
                 with_tests,
+                http,
                 force,
                 project_dir.as_deref(),
             )
@@ -410,8 +451,10 @@ fn cmd_new(
     language: &str,
     commands: &[String],
     with_tests: bool,
+    http: bool,
     force: bool,
     project_dir: Option<&Path>,
+    project_name: Option<&str>,
 ) -> Result<(), DaemonError> {
     let interactive = bot_id.is_none();
 
@@ -437,6 +480,7 @@ fn cmd_new(
             about: None,
             picture: None,
             scaffold: false,
+            http: false,
             project_dir: None,
         }
     };
@@ -489,16 +533,25 @@ fn cmd_new(
         } else {
             with_tests
         };
+        let http = if interactive { params.http } else { http };
         let project_dir = project_dir
             .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from(&params.bot_id));
+            .or_else(|| project_name.map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from(format!("{}-project", params.bot_id)));
         let project_dir_display = project_dir.display().to_string();
+
+        // Help the user see the distinction between project dir and bot dir.
+        println!(
+            "Project directory: {} (bot will be at bots/{}/)",
+            project_dir_display, params.bot_id
+        );
 
         scaffold::generate::run_scaffold(scaffold::generate::ScaffoldRequest {
             bot_id: params.bot_id.clone(),
             language,
             commands,
             with_tests,
+            http,
             force,
             project_dir,
             mode: scaffold::generate::ScaffoldMode::NewProject { snippet },
@@ -523,12 +576,14 @@ fn cmd_new(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_scaffold(
     config_path: &Path,
     bot_id: &str,
     language: &str,
     commands: &[String],
     with_tests: bool,
+    http: bool,
     force: bool,
     project_dir: Option<&Path>,
 ) -> Result<(), DaemonError> {
@@ -555,6 +610,7 @@ async fn cmd_scaffold(
         language: language.to_string(),
         commands: normalize_commands(commands),
         with_tests,
+        http,
         force,
         project_dir,
         mode: scaffold::generate::ScaffoldMode::ExistingProject {
@@ -623,6 +679,7 @@ struct NewBotParams {
     about: Option<String>,
     picture: Option<String>,
     scaffold: bool,
+    http: bool,
     project_dir: Option<PathBuf>,
 }
 
@@ -648,8 +705,13 @@ fn run_interactive_new() -> Result<NewBotParams, DaemonError> {
     let picture = prompt_optional("Picture URL: ")?;
 
     let scaffold = prompt_yes_no("Scaffold a handler project?")?;
+    let http = if scaffold {
+        prompt_yes_no("Will this bot call external HTTP APIs (adds httpx + respx)?")?
+    } else {
+        false
+    };
     let project_dir = if scaffold {
-        let default = PathBuf::from(&bot_id);
+        let default = PathBuf::from(format!("{}-project", bot_id));
         let input = prompt_line(&format!("Project directory [{}]: ", default.display()))?;
         let dir = if input.trim().is_empty() {
             default
@@ -671,6 +733,7 @@ fn run_interactive_new() -> Result<NewBotParams, DaemonError> {
         about,
         picture,
         scaffold,
+        http,
         project_dir,
     })
 }
@@ -2439,6 +2502,8 @@ mod tests {
             &[],
             false,
             false,
+            false,
+            None,
             None,
         )
         .unwrap_err();
@@ -2458,6 +2523,8 @@ mod tests {
             &[],
             false,
             false,
+            false,
+            None,
             None,
         )
         .unwrap_err();

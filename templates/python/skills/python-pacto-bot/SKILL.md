@@ -52,11 +52,14 @@ Valid actions: `ack`, `reply`, `defer`, `ignore`.
 For a brand-new bot, start with the admin CLI scaffold generator instead of hand-writing files. This creates an opinionated, runnable project with the handler file, `Dockerfile`, `docker-compose.yml`, systemd unit, `pacto-bot-api.toml`, `README.md`, and pytest files.
 
 ```bash
-# Create a new bot identity and scaffold the project in one command
+# Create a new bot identity and scaffold a Python handler project
 pacto-bot-admin new --scaffold my-bot --backend nsec --relays ws://localhost:7000 --commands hello,help
 
 # Or scaffold a project for an existing identity already in pacto-bot-api.toml
 pacto-bot-admin scaffold my-bot --commands hello,help
+
+# Scaffold a bot that calls external HTTP APIs (adds httpx + respx)
+pacto-bot-admin scaffold my-bot --commands price --http
 ```
 
 The generated project uses the layout under `templates/python/`. Inside the project:
@@ -92,13 +95,14 @@ Usage:
 
 from __future__ import annotations
 
-from pacto_bot_api import Bot
+from pacto_bot_api import Bot, parse_command
 
 bot = Bot(bot_id="my-bot")
 
 
 @bot.command("/hello")
 async def hello(event, bot):
+    parsed = parse_command(event.content)
     return {
         "event_id": event.event_id,
         "action": "reply",
@@ -115,22 +119,61 @@ if __name__ == "__main__":
     bot.run()
 ```
 
+## Error handling
+
+By default, `Bot` catches unhandled handler exceptions and replies with a
+friendly message so users know the bot is alive. Control this with constructor
+options:
+
+```python
+bot = Bot(
+    bot_id="my-bot",
+    reply_on_error=False,          # silently ignore handler exceptions
+    error_message="Oops, try again.",
+)
+```
+
+The error message is never sent for non-command events (e.g., malformed input)
+and never includes raw exception details.
+
 ## Common patterns
 
 ### Command with positional args and flags
 
 ```python
+from pacto_bot_api import parse_command
+
 @bot.command("/greet")
 async def greet(event, bot):
-    parsed = event.content  # Bot.command receives the raw event; parse manually if needed.
-    # Note: the high-level Bot does not auto-parse args for the handler.
-    # Use bot.client or parse event.content inside the handler.
-    return {
-        "event_id": event.event_id,
-        "action": "reply",
-        "content": "Hello!",
-    }
+    parsed = parse_command(event.content)
+    name = parsed["args"][0] if parsed and parsed["args"] else "friend"
+    return {"event_id": event.event_id, "action": "reply", "content": f"Hello, {name}!"}
 ```
+
+### HTTP client helper
+
+If the bot calls external APIs, install the optional `http` extra:
+
+```bash
+pip install "pacto-bot-api[http]"
+```
+
+Then use `httpx` in a handler:
+
+```python
+import httpx
+
+@bot.command("/price")
+async def price(event, bot):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get("https://api.example.com/price")
+    data = resp.json()
+    return {"event_id": event.event_id, "action": "reply", "content": str(data)}
+```
+
+When scaffolding with `--http`, the generated project includes `httpx` as a
+runtime dependency, `respx` in dev dependencies, and a `tests/test_http.py`
+template showing how to mock external calls.
 
 ### Defer + proactive send_dm
 

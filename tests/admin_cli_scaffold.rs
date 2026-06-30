@@ -109,9 +109,121 @@ fn new_scaffold_creates_multi_bot_project() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn new_scaffold_project_name_sets_project_directory() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let project_dir = temp.path().join("my-custom-project");
+
+    let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
+    cmd.args([
+        "new",
+        "--scaffold",
+        "echo-bot",
+        "--backend",
+        "nsec",
+        "--relays",
+        "ws://localhost:7000",
+        "--commands",
+        "echo",
+        "--project-name",
+        "my-custom-project",
+    ]);
+    cmd.current_dir(&temp);
+    cmd.assert().success();
+
+    assert!(project_dir.join("pacto-bot-api.toml").is_file());
+    assert!(
+        project_dir
+            .join("bots")
+            .join("echo-bot")
+            .join("echo_bot.py")
+            .is_file()
+    );
+    assert!(
+        project_dir
+            .join("bots")
+            .join("echo-bot")
+            .join("README.md")
+            .is_file()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn new_scaffold_uses_project_name_default() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let project_dir = temp.path().join("echo-bot-project");
+
+    let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
+    cmd.args([
+        "new",
+        "--scaffold",
+        "echo-bot",
+        "--backend",
+        "nsec",
+        "--relays",
+        "ws://localhost:7000",
+        "--commands",
+        "echo",
+    ]);
+    cmd.current_dir(&temp);
+    cmd.assert().success();
+
+    assert!(project_dir.join("pacto-bot-api.toml").is_file());
+    assert!(
+        project_dir
+            .join("bots")
+            .join("echo-bot")
+            .join("echo_bot.py")
+            .is_file()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn new_scaffold_project_dir_overrides_project_name() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let project_dir = temp.path().join("explicit-project");
+
+    let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
+    cmd.args([
+        "new",
+        "--scaffold",
+        "echo-bot",
+        "--backend",
+        "nsec",
+        "--relays",
+        "ws://localhost:7000",
+        "--commands",
+        "echo",
+        "--project-name",
+        "ignored-name",
+        "--project-dir",
+        &project_dir.to_string_lossy(),
+    ]);
+    cmd.current_dir(&temp);
+    cmd.assert().success();
+
+    assert!(project_dir.join("pacto-bot-api.toml").is_file());
+    assert!(
+        project_dir
+            .join("bots")
+            .join("echo-bot")
+            .join("echo_bot.py")
+            .is_file()
+    );
+
+    // Ensure the project-name was ignored in favor of project-dir.
+    assert!(!temp.path().join("ignored-name").exists());
+
+    Ok(())
+}
+
+#[test]
 fn new_scaffold_no_tests_skips_test_files() -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
-    let project_dir = temp.path().join("echo-bot");
+    let project_dir = temp.path().join("echo-bot-project");
 
     let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
     cmd.args([
@@ -368,7 +480,9 @@ fn generated_files_contain_no_real_secrets_except_config() -> Result<(), Box<dyn
         }
         let content = fs::read(&entry)?;
         assert!(
-            !content.windows(nsec_value.len()).any(|w| w == nsec_value.as_bytes()),
+            !content
+                .windows(nsec_value.len())
+                .any(|w| w == nsec_value.as_bytes()),
             "{} leaked nsec value",
             entry.display()
         );
@@ -383,7 +497,7 @@ fn new_interactive_scaffold_prompts_and_creates_project() -> Result<(), Box<dyn 
     let project_dir = temp.path().join("interactive-bot-project");
 
     let stdin = format!(
-        "interactive-bot\n1\n\n\n\n\n\ny\n{}\n\necho\ny\n",
+        "interactive-bot\n1\n\n\n\n\n\ny\nn\n{}\n\necho\ny\n",
         project_dir.to_string_lossy()
     );
 
@@ -414,6 +528,50 @@ fn new_interactive_scaffold_prompts_and_creates_project() -> Result<(), Box<dyn 
     assert!(config.contains("id = \"interactive-bot\""));
     assert!(config.contains("backend = \"nsec\""));
     assert!(config.contains("nsec = \"nsec1"));
+
+    Ok(())
+}
+
+#[test]
+fn new_scaffold_with_http_adds_http_dependencies_and_tests() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let project_dir = temp.path().join("price-bot");
+
+    let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
+    cmd.args([
+        "new",
+        "--scaffold",
+        "price-bot",
+        "--backend",
+        "nsec",
+        "--relays",
+        "ws://localhost:7000",
+        "--commands",
+        "price",
+        "--http",
+        "--project-dir",
+        &project_dir.to_string_lossy(),
+    ]);
+    cmd.assert().success();
+
+    let pyproject = fs::read_to_string(
+        project_dir
+            .join("bots")
+            .join("price-bot")
+            .join("pyproject.toml"),
+    )?;
+    assert!(pyproject.contains("httpx>=0.27"));
+    assert!(pyproject.contains("respx>=0.22"));
+
+    let http_test = fs::read_to_string(
+        project_dir
+            .join("bots")
+            .join("price-bot")
+            .join("tests")
+            .join("test_http.py"),
+    )?;
+    assert!(http_test.contains("import httpx"));
+    assert!(http_test.contains("import respx"));
 
     Ok(())
 }

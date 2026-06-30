@@ -1,0 +1,9 @@
+{
+  "manifest_version": "1",
+  "bot_file": "{{bot_id_snake}}.py",
+  "registration": true,
+  "shutdown": true,
+  "contract_pieces": [
+{{manifest_contract_pieces}}
+  ]
+}
