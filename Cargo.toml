@@ -1,12 +1,12 @@
 [package]
 name = "pacto-bot-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Pacto Contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/covenant-gov/pacto-bot-api"
 description = "Standalone daemon that multiplexes Pacto bot identities over JSON-RPC"
-rust-version = "1.85"
+rust-version = "1.96"
 
 [[bin]]
 name = "pacto-bot-api"
@@ -25,6 +25,7 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = "3"
+serde_yaml = "0.9"
 rusqlite = { version = "0.40", features = ["bundled"] }
 toml = "0.8"
 axum = "0.8"

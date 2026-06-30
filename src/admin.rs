@@ -44,6 +44,8 @@ use std::time::Duration;
 
 use pacto_bot_api::guide;
 
+mod scaffold;
+
 const DAEMON_LOCK_FILE: &str = "daemon.lock";
 const BOT_SECRET_TOKEN_FILE: &str = "bot_secret_token";
 const AGENT_DB_FILE: &str = "agent.db";
@@ -52,6 +54,9 @@ const AGENT_DB_FILE: &str = "agent.db";
 const TOP_LEVEL_AFTER_HELP: &str = r#"Examples:
   # Create a new dev bot with the nsec backend
   pacto-bot-admin new echo-bot --backend nsec --relays ws://localhost:7000
+
+  # Create a bot and scaffold a Python handler project
+  pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo
 
   # Publish the bot's kind:0 profile
   pacto-bot-admin publish-profile echo-bot
@@ -78,6 +83,9 @@ const NEW_AFTER_HELP: &str = r#"Examples:
 
   # Remote bunker backend
   pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<key>?relay=wss://relay.nsec.app
+
+  # Create a bot identity and scaffold a Python handler project
+  pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo
 
 Valid capabilities:
   ReadMessages   Receive decrypted DMs and group messages
@@ -119,6 +127,17 @@ const DIAGNOSE_AFTER_HELP: &str = r#"Examples:
 const STATUS_AFTER_HELP: &str = r#"Examples:
   pacto-bot-admin status
   pacto-bot-admin status --format json
+"#;
+
+const SCAFFOLD_AFTER_HELP: &str = r#"Examples:
+  # Create a new bot identity and scaffold a Python handler project
+  pacto-bot-admin new --scaffold echo-bot --backend nsec --relays ws://localhost:7000 --commands echo
+
+  # Scaffold a project for an existing bot identity
+  pacto-bot-admin scaffold echo-bot --commands echo
+
+  # Add a second bot to an existing multi-bot project
+  pacto-bot-admin scaffold price-bot --commands price
 "#;
 
 #[derive(Parser, Debug)]
@@ -177,6 +196,30 @@ enum Command {
         /// Bunker URI (required for bunker backends; omit to prompt).
         #[arg(short, long, value_name = "URI")]
         uri: Option<String>,
+
+        /// Also scaffold a handler project for the new bot.
+        #[arg(long, value_name = "SCAFFOLD")]
+        scaffold: bool,
+
+        /// Language for the generated handler project.
+        #[arg(short, long, value_name = "LANG", default_value = "python")]
+        language: String,
+
+        /// Slash-command stubs to generate (comma-separated or repeated).
+        #[arg(short = 'C', long, value_name = "COMMAND", value_delimiter = ',')]
+        commands: Vec<String>,
+
+        /// Skip generating pytest files for `new --scaffold`.
+        #[arg(long, value_name = "NO_TESTS")]
+        no_tests: bool,
+
+        /// Overwrite existing files without prompting.
+        #[arg(long, value_name = "FORCE")]
+        force: bool,
+
+        /// Project directory (default: `\u003cbot-id\u003e/` for new --scaffold, current dir for scaffold).
+        #[arg(long, value_name = "DIR")]
+        project_dir: Option<PathBuf>,
     },
     /// Publish a bot profile (kind:0) event.
     #[command(after_help = PUBLISH_PROFILE_AFTER_HELP)]
@@ -225,6 +268,33 @@ enum Command {
         #[arg(short, long, value_name = "FORMAT", default_value = "text")]
         format: String,
     },
+    /// Scaffold a handler project for an existing bot identity.
+    #[command(after_help = SCAFFOLD_AFTER_HELP)]
+    Scaffold {
+        /// Bot identity name from the daemon config.
+        #[arg(value_name = "BOT_ID")]
+        bot_id: String,
+
+        /// Language for the generated handler project.
+        #[arg(short, long, value_name = "LANG", default_value = "python")]
+        language: String,
+
+        /// Slash-command stubs to generate (comma-separated or repeated).
+        #[arg(short = 'C', long, value_name = "COMMAND", value_delimiter = ',')]
+        commands: Vec<String>,
+
+        /// Generate pytest files even when retrofitting an existing project.
+        #[arg(long, value_name = "WITH_TESTS")]
+        with_tests: bool,
+
+        /// Overwrite existing files without prompting.
+        #[arg(long, value_name = "FORCE")]
+        force: bool,
+
+        /// Project directory (default: current directory).
+        #[arg(long, value_name = "DIR")]
+        project_dir: Option<PathBuf>,
+    },
     /// Print documentation in the requested format.
     Docs {
         /// Output format. Valid values: llm.
@@ -261,7 +331,44 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             relays,
             capabilities,
             uri,
-        } => cmd_new(bot_id.as_deref(), &backend, &relays, &capabilities, uri),
+            scaffold,
+            language,
+            commands,
+            no_tests,
+            force,
+            project_dir,
+        } => cmd_new(
+            bot_id.as_deref(),
+            &backend,
+            &relays,
+            &capabilities,
+            uri,
+            scaffold,
+            &language,
+            &commands,
+            !no_tests,
+            force,
+            project_dir.as_deref(),
+        ),
+        Command::Scaffold {
+            bot_id,
+            language,
+            commands,
+            with_tests,
+            force,
+            project_dir,
+        } => {
+            cmd_scaffold(
+                &cli.config,
+                &bot_id,
+                &language,
+                &commands,
+                with_tests,
+                force,
+                project_dir.as_deref(),
+            )
+            .await
+        }
         Command::PublishProfile { bot_id } => cmd_publish_profile(&cli.config, &bot_id).await,
         Command::TestBunker { bot_id } => cmd_test_bunker(&cli.config, &bot_id).await,
         Command::Export { bot_id } => cmd_export(&cli.config, cli.data_dir, &bot_id),
@@ -298,6 +405,12 @@ fn cmd_new(
     relays: &[String],
     capabilities: &[String],
     uri: Option<String>,
+    scaffold: bool,
+    language: &str,
+    commands: &[String],
+    with_tests: bool,
+    force: bool,
+    project_dir: Option<&Path>,
 ) -> Result<(), DaemonError> {
     let interactive = bot_id.is_none();
 
@@ -345,6 +458,41 @@ fn cmd_new(
 
     let snippet = build_bot_snippet(&params, &npub, &nsec);
 
+    if scaffold {
+        let language = if interactive {
+            prompt_language()?
+        } else {
+            validate_language(language)?;
+            language.to_string()
+        };
+        let commands = if interactive {
+            prompt_commands()?
+        } else {
+            normalize_commands(commands)
+        };
+        let with_tests = if interactive {
+            prompt_yes_no("Generate pytest files?")?
+        } else {
+            with_tests
+        };
+        let project_dir = project_dir
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(&params.bot_id));
+        let project_dir_display = project_dir.display().to_string();
+
+        scaffold::generate::run_scaffold(scaffold::generate::ScaffoldRequest {
+            bot_id: params.bot_id.clone(),
+            language,
+            commands,
+            with_tests,
+            force,
+            project_dir,
+            mode: scaffold::generate::ScaffoldMode::NewProject { snippet },
+        })?;
+        println!("Created scaffolded project for {} in {}", params.bot_id, project_dir_display);
+        return Ok(());
+    }
+
     if interactive {
         println!("\nPreview of the config snippet that will be generated:\n");
         println!("{snippet}");
@@ -356,6 +504,83 @@ fn cmd_new(
 
     println!("{snippet}");
     Ok(())
+}
+
+async fn cmd_scaffold(
+    _config_path: &Path,
+    bot_id: &str,
+    language: &str,
+    commands: &[String],
+    with_tests: bool,
+    force: bool,
+    project_dir: Option<&Path>,
+) -> Result<(), DaemonError> {
+    validate_bot_id(bot_id)?;
+    validate_language(language)?;
+
+    let project_dir = project_dir
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let project_dir_display = project_dir.display().to_string();
+
+    let config = DaemonConfig::load(project_dir.join("pacto-bot-api.toml"))?;
+    let bot = find_bot(&config.bots, bot_id)?;
+
+    scaffold::generate::run_scaffold(scaffold::generate::ScaffoldRequest {
+        bot_id: bot_id.to_string(),
+        language: language.to_string(),
+        commands: normalize_commands(commands),
+        with_tests,
+        force,
+        project_dir,
+        mode: scaffold::generate::ScaffoldMode::ExistingProject {
+            bot_config: bot.clone(),
+        },
+    })?;
+    println!("Updated scaffold for {bot_id} in {}", project_dir_display);
+    Ok(())
+}
+
+fn validate_language(language: &str) -> Result<(), DaemonError> {
+    match language {
+        "python" => Ok(()),
+        other => Err(DaemonError::Config(format!(
+            "unsupported scaffold language: {other}; supported languages: python"
+        ))),
+    }
+}
+
+fn normalize_commands(commands: &[String]) -> Vec<String> {
+    commands
+        .iter()
+        .flat_map(|s| s.split(','))
+        .map(|s| s.trim().trim_start_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn prompt_language() -> Result<String, DaemonError> {
+    println!("\nHandler language:");
+    println!("  1) python (default)");
+    loop {
+        let input = prompt_line("Choose language [1]: ")?;
+        let choice = if input.trim().is_empty() { "1" } else { input.trim() };
+        match choice {
+            "1" | "python" => return Ok("python".to_string()),
+            _ => println!("Invalid choice; enter 1 or 'python'."),
+        }
+    }
+}
+
+fn prompt_commands() -> Result<Vec<String>, DaemonError> {
+    println!("\nSlash commands to scaffold (e.g. echo,help). Leave blank for none.");
+    let input = prompt_line("Commands: ")?;
+    let raw: Vec<String> = input
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    Ok(normalize_commands(&raw))
 }
 
 /// Parameters collected for a new bot identity.
@@ -2160,13 +2385,39 @@ mod tests {
 
     #[test]
     fn new_rejects_empty_bot_id() {
-        let err = cmd_new(Some(""), "nsec", &[], &[], None).unwrap_err();
+        let err = cmd_new(
+            Some(""),
+            "nsec",
+            &[],
+            &[],
+            None,
+            false,
+            "python",
+            &[],
+            false,
+            false,
+            None,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("bot_id"));
     }
 
     #[test]
     fn new_rejects_unknown_backend() {
-        let err = cmd_new(Some("x"), "invalid", &[], &[], None).unwrap_err();
+        let err = cmd_new(
+            Some("x"),
+            "invalid",
+            &[],
+            &[],
+            None,
+            false,
+            "python",
+            &[],
+            false,
+            false,
+            None,
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("unknown backend"));
     }
 
