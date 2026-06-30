@@ -17,10 +17,14 @@ Global options apply to every subcommand:
 
 ### `new`
 
-Create a new bot identity config snippet.
+Create a new bot identity config snippet. Run with no positional arguments to start an interactive interview.
 
 Examples:
 ```bash
+# Interactive wizard
+pacto-bot-admin new
+
+# Non-interactive scripting
 pacto-bot-admin new echo-bot --backend nsec --relays ws://localhost:7000 --capabilities ReadMessages --capabilities SendMessages
 
 pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<PUBKEY>?relay=wss://relay.nsec.app
@@ -31,6 +35,7 @@ Notes:
 - `--relays` — relay URLs for the bot.
 - `--capabilities` — `ReadMessages`, `SendMessages`, `ManageProfile`.
 - `--uri` — bunker URI (required for bunker backends; omit to prompt).
+- Optional profile fields (`display_name`, `about`, `picture`) are collected only in interactive mode.
 
 ### `publish-profile`
 
