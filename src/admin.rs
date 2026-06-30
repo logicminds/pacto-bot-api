@@ -22,7 +22,6 @@ use pacto_bot_api::transport::protocol::{
 };
 use rusqlite::Connection;
 
-#[cfg(test)]
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -324,7 +323,7 @@ fn cmd_new(
             backend: backend.to_string(),
             relays,
             capabilities,
-            uri,
+            uri: uri.map(|s| SecretString::new(s.into())),
             display_name: None,
             about: None,
             picture: None,
@@ -371,7 +370,7 @@ struct NewBotParams {
     backend: String,
     relays: Vec<String>,
     capabilities: Vec<String>,
-    uri: Option<String>,
+    uri: Option<SecretString>,
     display_name: Option<String>,
     about: Option<String>,
     picture: Option<String>,
@@ -385,7 +384,7 @@ fn run_interactive_new() -> Result<NewBotParams, DaemonError> {
     let backend = prompt_backend()?;
 
     let uri = if matches!(backend.as_str(), "bunker_local" | "bunker_remote") {
-        Some(prompt_uri_with_label(&backend)?)
+        Some(SecretString::new(prompt_uri_with_label(&backend)?.into()))
     } else {
         None
     };
@@ -423,7 +422,7 @@ fn build_bot_snippet(params: &NewBotParams, npub: &str, nsec: &str) -> String {
             ));
         }
         backend => {
-            let uri = params.uri.as_deref().unwrap_or("");
+            let uri = params.uri.as_ref().map(|s| s.expose_secret()).unwrap_or("");
             lines.push(format!(
                 "signing = {{ backend = {backend:?}, uri = {uri:?} }}"
             ));
