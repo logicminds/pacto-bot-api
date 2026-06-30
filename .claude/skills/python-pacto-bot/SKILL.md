@@ -47,6 +47,38 @@ Every Python bot follows the same loop:
 
 Valid actions: `ack`, `reply`, `defer`, `ignore`.
 
+## Scaffold a new Python bot project
+
+For a brand-new bot, start with the admin CLI scaffold generator instead of hand-writing files. This creates an opinionated, runnable project with the handler file, `Dockerfile`, `docker-compose.yml`, systemd unit, `pacto-bot-api.toml`, `README.md`, and pytest files.
+
+```bash
+# Create a new bot identity and scaffold a Python handler project
+pacto-bot-admin new --scaffold my-bot --backend nsec --relays ws://localhost:7000 --commands hello,help
+
+# Or scaffold a project for an existing identity already in pacto-bot-api.toml
+pacto-bot-admin scaffold my-bot --commands hello,help
+
+# Scaffold a bot that calls external HTTP APIs (adds httpx + respx)
+pacto-bot-admin scaffold my-bot --commands price --http
+```
+
+The generated project uses the layout under `templates/python/`. Inside the project:
+
+- `bots/my-bot/my_bot.py` — handler file using `from pacto_bot_api import Bot`.
+- `bots/my-bot/Dockerfile` — container image for the bot.
+- `docker-compose.yml` — compose stack for the bot, daemon, and optional bunker.
+- `pacto-bot-api.toml` — daemon config with the bot identity (mode `0o600`).
+- `README.md` — how to run against a host daemon or the full compose stack.
+
+Only fall back to hand-writing the minimum viable bot below when the user explicitly wants a single-file example or is modifying an existing file that cannot be regenerated.
+
+### Secret handling
+
+- `pacto-bot-admin new` and `pacto-bot-admin new --scaffold` with `--backend nsec` generate an `nsec` value and write it to `pacto-bot-api.toml`.
+- **Never paste the generated `nsec` value, config snippet, or any signing material into chat.** The file is created with `0o600` permissions precisely because it contains secrets.
+- For local development the `nsec` backend is acceptable; for production use `bunker_local` or `bunker_remote` instead.
+- When sharing generated files, redact `nsec`, `uri`, and `secret_token` values first.
+
 ## Minimum viable bot
 
 ```python
@@ -63,13 +95,14 @@ Usage:
 
 from __future__ import annotations
 
-from pacto_bot_api import Bot
+from pacto_bot_api import Bot, parse_command
 
 bot = Bot(bot_id="my-bot")
 
 
 @bot.command("/hello")
 async def hello(event, bot):
+    parsed = parse_command(event.content)
     return {
         "event_id": event.event_id,
         "action": "reply",
@@ -86,22 +119,61 @@ if __name__ == "__main__":
     bot.run()
 ```
 
+## Error handling
+
+By default, `Bot` catches unhandled handler exceptions and replies with a
+friendly message so users know the bot is alive. Control this with constructor
+options:
+
+```python
+bot = Bot(
+    bot_id="my-bot",
+    reply_on_error=False,          # silently ignore handler exceptions
+    error_message="Oops, try again.",
+)
+```
+
+The error message is never sent for non-command events (e.g., malformed input)
+and never includes raw exception details.
+
 ## Common patterns
 
 ### Command with positional args and flags
 
 ```python
+from pacto_bot_api import parse_command
+
 @bot.command("/greet")
 async def greet(event, bot):
-    parsed = event.content  # Bot.command receives the raw event; parse manually if needed.
-    # Note: the high-level Bot does not auto-parse args for the handler.
-    # Use bot.client or parse event.content inside the handler.
-    return {
-        "event_id": event.event_id,
-        "action": "reply",
-        "content": "Hello!",
-    }
+    parsed = parse_command(event.content)
+    name = parsed["args"][0] if parsed and parsed["args"] else "friend"
+    return {"event_id": event.event_id, "action": "reply", "content": f"Hello, {name}!"}
 ```
+
+### HTTP client helper
+
+If the bot calls external APIs, install the optional `http` extra:
+
+```bash
+pip install "pacto-bot-api[http]"
+```
+
+Then use `httpx` in a handler:
+
+```python
+import httpx
+
+@bot.command("/price")
+async def price(event, bot):
+    async with httpx.AsyncClient() as client:
+        resp = await client.get("https://api.example.com/price")
+    data = resp.json()
+    return {"event_id": event.event_id, "action": "reply", "content": str(data)}
+```
+
+When scaffolding with `--http`, the generated project includes `httpx` as a
+runtime dependency, `respx` in dev dependencies, and a `tests/test_http.py`
+template showing how to mock external calls.
 
 ### Defer + proactive send_dm
 
@@ -143,18 +215,64 @@ If the user wants a new example in `python/examples/`:
    ```
 5. Ensure `python/examples/<name>_bot.py` is discovered automatically; `examples/conftest.py` scans both `examples/` and `python/examples/`.
 
-## Daemon setup commands
+## Admin CLI reference
 
-Use only commands that exist in `pacto-bot-admin`:
+Use only these `pacto-bot-admin` commands. Do not invent commands like `pacto bunker init` or `pacto bot create`; they do not exist yet.
+
+### Bot lifecycle
 
 ```bash
+# Create a new bot identity + scaffold a Python project in one command
+pacto-bot-admin new --scaffold my-bot --backend nsec --relays ws://localhost:7000 --commands hello,help
+
+# Create only the identity config snippet (use this for existing projects)
 pacto-bot-admin new my-bot --backend nsec --relays ws://localhost:7000
+
+# Scaffold a handler project for an existing bot identity already in pacto-bot-api.toml
+pacto-bot-admin scaffold my-bot --commands hello,help
+
+# Publish a bot profile (kind:0) event
 pacto-bot-admin publish-profile my-bot
-pacto-bot-admin rotate-http-token --data-dir ~/.local/share/pacto-bot-api
-pacto-bot-api --config pacto-bot-api.toml --data-dir ~/.local/share/pacto-bot-api --http-bind 127.0.0.1:8080
+
+# Test a NIP-46 bunker connection and pubkey match
+pacto-bot-admin test-bunker my-bot
 ```
 
-Do **not** invent commands like `pacto bunker init` or `pacto bot create`; they do not exist yet.
+**Secret handling:** `new` and `new --scaffold` with `--backend nsec` write an
+`nsec` value to `pacto-bot-api.toml`. Do not paste that value or the command
+output into chat. For production use `bunker_local` or `bunker_remote`.
+
+### Daemon operations
+
+```bash
+# Validate the daemon configuration file
+pacto-bot-admin validate-config
+
+# Rotate the HTTP secret token
+pacto-bot-admin rotate-http-token --data-dir ~/.local/share/pacto-bot-api
+
+# Show daemon status, connectivity, and registered handlers
+pacto-bot-admin status
+
+# Emit structured daemon diagnostics
+pacto-bot-admin diagnose
+```
+
+### State migration
+
+```bash
+# Export bot daemon-local state to JSON
+pacto-bot-admin export my-bot > my-bot-state.json
+
+# Import bot daemon-local state from JSON
+pacto-bot-admin import my-bot < my-bot-state.json
+```
+
+### Run the daemon
+
+```bash
+pacto-bot-api --config pacto-bot-api.toml --data-dir ~/.local/share/pacto-bot-api --http-bind 127.0.0.1:8080
+```
 
 ## Verification checklist
 
@@ -165,6 +283,7 @@ Do **not** invent commands like `pacto bunker init` or `pacto bot create`; they 
 - [ ] Example has a manifest if it should be validated by the contract harness.
 - [ ] Contract harness passes: `pytest examples/test_examples_contract.py -v`.
 - [ ] No invented admin CLI commands appear in docs or docstrings.
+- [ ] No real `nsec`, bunker `uri`, or daemon secret tokens are pasted into chat or committed.
 
 ## Anti-patterns
 
