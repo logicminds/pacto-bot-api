@@ -383,7 +383,7 @@ fn new_interactive_scaffold_prompts_and_creates_project() -> Result<(), Box<dyn 
     let project_dir = temp.path().join("interactive-bot-project");
 
     let stdin = format!(
-        "interactive-bot\n1\n\n\n\n\n\ny\n{}\n\necho\ny\n",
+        "interactive-bot\n1\n\n\n\n\n\ny\nn\n{}\n\necho\ny\n",
         project_dir.to_string_lossy()
     );
 
@@ -414,6 +414,46 @@ fn new_interactive_scaffold_prompts_and_creates_project() -> Result<(), Box<dyn 
     assert!(config.contains("id = \"interactive-bot\""));
     assert!(config.contains("backend = \"nsec\""));
     assert!(config.contains("nsec = \"nsec1"));
+
+    Ok(())
+}
+
+#[test]
+fn new_scaffold_with_http_adds_http_dependencies_and_tests() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let project_dir = temp.path().join("price-bot");
+
+    let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
+    cmd.args([
+        "new",
+        "--scaffold",
+        "price-bot",
+        "--backend",
+        "nsec",
+        "--relays",
+        "ws://localhost:7000",
+        "--commands",
+        "price",
+        "--http",
+        "--project-dir",
+        &project_dir.to_string_lossy(),
+    ]);
+    cmd.assert().success();
+
+    let pyproject =
+        fs::read_to_string(project_dir.join("bots").join("price-bot").join("pyproject.toml"))?;
+    assert!(pyproject.contains("httpx>=0.27"));
+    assert!(pyproject.contains("respx>=0.22"));
+
+    let http_test = fs::read_to_string(
+        project_dir
+            .join("bots")
+            .join("price-bot")
+            .join("tests")
+            .join("test_http.py"),
+    )?;
+    assert!(http_test.contains("import httpx"));
+    assert!(http_test.contains("import respx"));
 
     Ok(())
 }

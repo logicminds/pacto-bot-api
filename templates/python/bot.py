@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from pacto_bot_api import Bot
+from pacto_bot_api import Bot, parse_command
 
 bot = Bot(bot_id="{{bot_id}}")
 
 {% for command in commands %}
 @bot.command("/{{command}}")
 async def {{command}}_handler(event, bot):
+    """TODO: implement /{{command}}."""
+    parsed = parse_command(event.content)
     return {
         "event_id": event.event_id,
         "action": "reply",

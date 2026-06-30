@@ -9,6 +9,7 @@ from {{bot_id_snake}} import bot
 
 class FakeEvent:
     event_id = "test-event-id-123"
+    content = ""
 
 
 @pytest.mark.asyncio
@@ -24,6 +25,9 @@ async def test_{{command}}_command():
     result = await handler(FakeEvent(), bot)
     assert result["action"] == "reply"
     assert result["event_id"] == "test-event-id-123"
+    # The scaffold ships with a placeholder response; replace it with real
+    # implementation for this command before committing.
+    assert result["content"] != "{{command}} placeholder response"
     assert "{{command}}" in result["content"].lower()
 
 

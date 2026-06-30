@@ -136,6 +136,9 @@ const SCAFFOLD_AFTER_HELP: &str = r#"Examples:
   # Scaffold a project for an existing bot identity
   pacto-bot-admin scaffold echo-bot --commands echo
 
+  # Scaffold a bot that calls external HTTP APIs
+  pacto-bot-admin scaffold price-bot --commands price --http
+
   # Add a second bot to an existing multi-bot project
   pacto-bot-admin scaffold price-bot --commands price
 "#;
@@ -213,6 +216,10 @@ enum Command {
         #[arg(long)]
         no_tests: bool,
 
+        /// Generate the handler with HTTP client dependencies and tests.
+        #[arg(long)]
+        http: bool,
+
         /// Overwrite existing files without prompting.
         #[arg(long)]
         force: bool,
@@ -287,6 +294,10 @@ enum Command {
         #[arg(long)]
         with_tests: bool,
 
+        /// Generate the handler with HTTP client dependencies and tests.
+        #[arg(long)]
+        http: bool,
+
         /// Overwrite existing files without prompting.
         #[arg(long)]
         force: bool,
@@ -335,6 +346,7 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             language,
             commands,
             no_tests,
+            http,
             force,
             project_dir,
         } => cmd_new(
@@ -347,6 +359,7 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             &language,
             &commands,
             !no_tests,
+            http,
             force,
             project_dir.as_deref(),
         ),
@@ -355,6 +368,7 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
             language,
             commands,
             with_tests,
+            http,
             force,
             project_dir,
         } => {
@@ -364,6 +378,7 @@ async fn run(cli: Cli) -> Result<(), DaemonError> {
                 &language,
                 &commands,
                 with_tests,
+                http,
                 force,
                 project_dir.as_deref(),
             )
@@ -410,6 +425,7 @@ fn cmd_new(
     language: &str,
     commands: &[String],
     with_tests: bool,
+    http: bool,
     force: bool,
     project_dir: Option<&Path>,
 ) -> Result<(), DaemonError> {
@@ -437,6 +453,7 @@ fn cmd_new(
             about: None,
             picture: None,
             scaffold: false,
+            http: false,
             project_dir: None,
         }
     };
@@ -489,6 +506,7 @@ fn cmd_new(
         } else {
             with_tests
         };
+        let http = if interactive { params.http } else { http };
         let project_dir = project_dir
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(&params.bot_id));
@@ -499,6 +517,7 @@ fn cmd_new(
             language,
             commands,
             with_tests,
+            http,
             force,
             project_dir,
             mode: scaffold::generate::ScaffoldMode::NewProject { snippet },
@@ -529,6 +548,7 @@ async fn cmd_scaffold(
     language: &str,
     commands: &[String],
     with_tests: bool,
+    http: bool,
     force: bool,
     project_dir: Option<&Path>,
 ) -> Result<(), DaemonError> {
@@ -555,6 +575,7 @@ async fn cmd_scaffold(
         language: language.to_string(),
         commands: normalize_commands(commands),
         with_tests,
+        http,
         force,
         project_dir,
         mode: scaffold::generate::ScaffoldMode::ExistingProject {
@@ -623,6 +644,7 @@ struct NewBotParams {
     about: Option<String>,
     picture: Option<String>,
     scaffold: bool,
+    http: bool,
     project_dir: Option<PathBuf>,
 }
 
@@ -648,6 +670,11 @@ fn run_interactive_new() -> Result<NewBotParams, DaemonError> {
     let picture = prompt_optional("Picture URL: ")?;
 
     let scaffold = prompt_yes_no("Scaffold a handler project?")?;
+    let http = if scaffold {
+        prompt_yes_no("Will this bot call external HTTP APIs (adds httpx + respx)?")?
+    } else {
+        false
+    };
     let project_dir = if scaffold {
         let default = PathBuf::from(&bot_id);
         let input = prompt_line(&format!("Project directory [{}]: ", default.display()))?;
@@ -671,6 +698,7 @@ fn run_interactive_new() -> Result<NewBotParams, DaemonError> {
         about,
         picture,
         scaffold,
+        http,
         project_dir,
     })
 }
@@ -2439,6 +2467,7 @@ mod tests {
             &[],
             false,
             false,
+            false,
             None,
         )
         .unwrap_err();
@@ -2456,6 +2485,7 @@ mod tests {
             false,
             "python",
             &[],
+            false,
             false,
             false,
             None,

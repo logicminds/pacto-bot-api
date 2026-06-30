@@ -67,6 +67,7 @@ pub struct ScaffoldRequest {
     pub language: String,
     pub commands: Vec<String>,
     pub with_tests: bool,
+    pub http: bool,
     pub force: bool,
     pub project_dir: PathBuf,
     pub mode: ScaffoldMode,
@@ -235,8 +236,47 @@ fn build_context(request: &ScaffoldRequest) -> HashMap<String, TemplateValue> {
         "with_tests".to_string(),
         TemplateValue::from(request.with_tests),
     );
+    ctx.insert("http".to_string(), TemplateValue::from(request.http));
+    ctx.insert("no_http".to_string(), TemplateValue::from(!request.http));
+    ctx.insert(
+        "manifest_contract_pieces".to_string(),
+        TemplateValue::from(build_manifest_contract_pieces(request)),
+    );
     ctx.insert("version".to_string(), TemplateValue::from("0.1.0"));
     ctx
+}
+
+fn build_manifest_contract_pieces(request: &ScaffoldRequest) -> String {
+    let pieces: Vec<String> = request
+        .commands
+        .iter()
+        .map(|command| {
+            format!(
+                r#"    {{
+      "name": "{command}_reply",
+      "type": "event_response",
+      "timeout_seconds": 5,
+      "inject_event": {{
+        "bot_id": "{bot_id}",
+        "event_id": "{command}-0001",
+        "type": "dm_received",
+        "chat_id": null,
+        "content": "/{command}",
+        "rumor_id": "rumor-{command}-0001",
+        "author": "npub1sender",
+        "timestamp": 1700000000000
+      }},
+      "expect_response": {{
+        "event_id": "{command}-0001",
+        "action": "reply"
+      }}
+    }}"#,
+                command = command,
+                bot_id = request.bot_id
+            )
+        })
+        .collect();
+    pieces.join(",\n")
 }
 
 fn bot_id_snake(bot_id: &str) -> String {
@@ -792,6 +832,7 @@ mod tests {
             language: "python".to_string(),
             commands: vec!["echo".to_string()],
             with_tests: true,
+            http: false,
             force: false,
             project_dir: PathBuf::from("/tmp/echo-bot"),
             mode: ScaffoldMode::NewProject {
@@ -802,6 +843,7 @@ mod tests {
         assert_eq!(ctx["bot_id"].as_str(), Some("echo-bot"));
         assert_eq!(ctx["bot_id_snake"].as_str(), Some("echo_bot"));
         assert!(ctx["with_tests"].is_truthy());
+        assert!(!ctx["http"].is_truthy());
     }
 
     #[test]
