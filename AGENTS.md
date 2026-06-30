@@ -42,9 +42,13 @@ Key pattern: **daemon manages runtime, admin CLI manages lifecycle**. The daemon
 
 ## Development Commands
 
-Because the crate does not yet exist, these commands are the planned targets:
-
 ```bash
+# Full validation suite (fmt, clippy, tests) — run this before committing
+make validate
+
+# Build all targets
+make build
+
 # Build and run the daemon
 cargo run --bin pacto-bot-api -- --config pacto-bot-api.toml --data-dir ./data
 
@@ -63,6 +67,10 @@ cargo test -- --ignored
 # Codegen / full verification
 cargo xtask codegen
 ```
+
+**Always run `make validate` before committing.** It runs `cargo fmt --check`,
+`cargo clippy`, and the full test suite. Do not commit code that fails this
+gate.
 
 Ecosystem-wide setup for local services (relay, EVM testnet, bunker):
 
@@ -176,6 +184,7 @@ Skills are installed with `npx skills add ... --copy` so the files are committed
 ## Notes for AI Assistants
 
 - Do not assume a `src/` directory exists yet. Before editing code, verify whether scaffolding has been created.
+- **Always run `make validate` before committing.** It runs `cargo fmt --check`, `cargo clippy`, and the full test suite. Do not commit code that fails this gate.
 - Respect the planned separation of concerns: runtime logic belongs in the daemon, lifecycle/identity operations belong in `pacto-bot-admin`.
 - When generating config examples, enforce `0o600` permissions and warn against committing real nsec values.
 - Prefer deterministic, Docker-free tests; gate external-service tests behind `#[ignore]`.

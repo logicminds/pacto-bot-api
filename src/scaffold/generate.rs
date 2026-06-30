@@ -233,6 +233,21 @@ fn build_context(request: &ScaffoldRequest) -> HashMap<String, TemplateValue> {
         TemplateValue::from(request.commands.clone()),
     );
     ctx.insert(
+        "first_command".to_string(),
+        TemplateValue::from(request.commands.first().cloned().unwrap_or_default()),
+    );
+    ctx.insert(
+        "project_dir_name".to_string(),
+        TemplateValue::from(
+            request
+                .project_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&request.bot_id)
+                .to_string(),
+        ),
+    );
+    ctx.insert(
         "with_tests".to_string(),
         TemplateValue::from(request.with_tests),
     );
@@ -477,11 +492,9 @@ fn copy_sdk_and_build_wheel(
         println!("Skipped {}", target.display());
         return Ok(());
     }
-    if target.exists() && !policy.force && policy.interactive {
-        if !prompt_overwrite_dir(&target)? {
-            println!("Skipped {}", target.display());
-            return Ok(());
-        }
+    if target.exists() && !policy.force && policy.interactive && !prompt_overwrite_dir(&target)? {
+        println!("Skipped {}", target.display());
+        return Ok(());
     }
 
     copy_dir_all(&source, &target)?;
@@ -513,11 +526,9 @@ fn copy_skills(
         println!("Skipped {}", target.display());
         return Ok(());
     }
-    if target.exists() && !policy.force && policy.interactive {
-        if !prompt_overwrite_dir(&target)? {
-            println!("Skipped {}", target.display());
-            return Ok(());
-        }
+    if target.exists() && !policy.force && policy.interactive && !prompt_overwrite_dir(&target)? {
+        println!("Skipped {}", target.display());
+        return Ok(());
     }
 
     copy_dir_all(&source, &target)?;
@@ -531,13 +542,10 @@ fn build_wheel(sdk_dir: &Path) -> Result<(), DaemonError> {
         .output()
         .map_err(DaemonError::Io)?;
     if !output.status.success() {
-        return Err(DaemonError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!(
-                "wheel build failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ),
-        )));
+        return Err(DaemonError::Io(std::io::Error::other(format!(
+            "wheel build failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))));
     }
     println!("Built SDK wheel in {}", sdk_dir.join("dist").display());
     Ok(())

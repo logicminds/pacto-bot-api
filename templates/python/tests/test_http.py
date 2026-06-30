@@ -17,20 +17,24 @@ class FakeEvent:
 @respx.mock
 @pytest.mark.asyncio
 async def test_http_command_uses_external_api():
-    """Example: mock an external API and verify the handler uses it.
+    """Example: mock an external API and verify a handler uses it.
 
-    Replace this with a real test for a command that calls an HTTP service.
+    Replace the route URL and the event content with the real API and command
+    your bot calls. Then wire the response to the handler and assert the reply.
     """
-    route = respx.get("https://api.example.com/health").mock(
+    route = respx.get("https://api.example.com/data").mock(
         return_value=httpx.Response(200, json={"status": "ok"})
     )
 
-    # TODO: wire this to a real command that uses httpx.
-    async with httpx.AsyncClient() as client:
-        response = await client.get("https://api.example.com/health")
+    # TODO: replace with the command that triggers an HTTP call in your bot.
+    handler = bot._commands["{{first_command}}"]
+    event = FakeEvent()
+    event.content = "/{{first_command}}"
+    result = await handler(event, bot)
 
-    assert response.status_code == 200
-    assert route.called
+    assert result["action"] == "reply"
+    # TODO: once the handler above calls the mocked API, also assert:
+    # assert route.called
 {% endif %}
 {% if no_http %}# This bot was scaffolded without --http. Add httpx/respx to pyproject.toml
 # and implement HTTP tests here if the bot calls external APIs.

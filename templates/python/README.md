@@ -10,6 +10,10 @@ This bot responds to the following slash commands:
 
 ## Run against a host daemon
 
+> **Note:** The commands below assume you are already inside the scaffold project
+> directory (the directory that contains `bots/`, `sdk/`, and `pacto-bot-api.toml`).
+> If you are running from a parent directory, use `cd {{bot_id}}` first.
+
 1. Make sure `pacto-bot-api` is running on the host and its Unix socket is
    available at `/run/pacto-bot-api.sock`.
 2. Change into the bot directory:
@@ -27,9 +31,9 @@ This bot responds to the following slash commands:
 {% if http %}
 ## External HTTP APIs
 
-This scaffold was generated with `--http`. It depends on `httpx` and the test
-suite uses `respx` to mock external calls. See `tests/test_http.py` for a
-template, and add `httpx` to runtime dependencies if your bot calls live APIs.
+This scaffold was generated with `--http`. `httpx` is already included as a
+runtime dependency and `respx` is included as a dev dependency. Use `respx` in
+`tests/test_http.py` to mock the external endpoints your bot calls.
 {% endif %}
 ## Install as a systemd service
 
@@ -92,5 +96,8 @@ mounts the host socket read-only.
 
 - The `nsec` signing backend is intended for **development only**. Production
   deployments should use `bunker_local` or `bunker_remote`.
+- The generated `pacto-bot-api.toml` contains signing material and should never
+  be committed to version control. It is ignored by `.gitignore` and
+  `.dockerignore` by default.
 - Never commit real signing material, `nsec` values, or daemon secrets to
   version control.
