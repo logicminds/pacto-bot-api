@@ -47,7 +47,7 @@ pacto-bot-admin new
 pacto-bot-admin new echo-bot --backend nsec --relays ws://localhost:7000 --capabilities ReadMessages --capabilities SendMessages
 
 pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<PUBKEY>?relay=wss://relay.nsec.app"#,
-        "- `--backend` — `nsec` (dev-only), `bunker_local`, or `bunker_remote`.\\n- `--relays` — relay URLs for the bot.\\n- `--capabilities` — `ReadMessages`, `SendMessages`, `ManageProfile`.\\n- `--uri` — bunker URI (required for bunker backends; omit to prompt).\\n- Optional profile fields (`display_name`, `about`, `picture`) are collected only in interactive mode.",
+        "- `--backend` — `nsec` (dev-only), `bunker_local`, or `bunker_remote`.\n- `--relays` — relay URLs for the bot.\n- `--capabilities` — `ReadMessages`, `SendMessages`, `ManageProfile`.\n- `--uri` — bunker URI (required for bunker backends; omit to prompt).\n- Optional profile fields (`display_name`, `about`, `picture`) are collected only in interactive mode.",
     );
 
     render_command(

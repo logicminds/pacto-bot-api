@@ -31,7 +31,11 @@ pacto-bot-admin new echo-bot --backend bunker_remote --uri bunker://<PUBKEY>?rel
 ```
 
 Notes:
-- `--backend` — `nsec` (dev-only), `bunker_local`, or `bunker_remote`.\n- `--relays` — relay URLs for the bot.\n- `--capabilities` — `ReadMessages`, `SendMessages`, `ManageProfile`.\n- `--uri` — bunker URI (required for bunker backends; omit to prompt).\n- Optional profile fields (`display_name`, `about`, `picture`) are collected only in interactive mode.
+- `--backend` — `nsec` (dev-only), `bunker_local`, or `bunker_remote`.
+- `--relays` — relay URLs for the bot.
+- `--capabilities` — `ReadMessages`, `SendMessages`, `ManageProfile`.
+- `--uri` — bunker URI (required for bunker backends; omit to prompt).
+- Optional profile fields (`display_name`, `about`, `picture`) are collected only in interactive mode.
 
 ### `publish-profile`
 

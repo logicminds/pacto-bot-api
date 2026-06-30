@@ -68,7 +68,7 @@ fn new_interactive_outputs_valid_nsec_snippet() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn new_interactive_cancellation_prints_no_snippet() -> Result<(), Box<dyn Error>> {
+fn new_interactive_cancellation_prints_no_final_snippet() -> Result<(), Box<dyn Error>> {
     let mut cmd = Command::cargo_bin("pacto-bot-admin")?;
     cmd.arg("new");
     cmd.write_stdin("interactive-bot\n\n\n\n\n\n\nn\n");

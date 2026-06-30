@@ -307,23 +307,18 @@ fn cmd_new(
         let bot_id = bot_id.unwrap_or_default();
         validate_bot_id(bot_id)?;
 
-        let relays = if relays.is_empty() {
-            vec!["ws://localhost:7000".to_string()]
+        let uri = if matches!(backend, "bunker_local" | "bunker_remote") && uri.is_none() {
+            Some(SecretString::new(prompt_uri_with_label(backend)?.into()))
         } else {
-            relays.to_vec()
-        };
-        let capabilities = if capabilities.is_empty() {
-            vec!["ReadMessages".to_string()]
-        } else {
-            capabilities.to_vec()
+            uri.map(|s| SecretString::new(s.into()))
         };
 
         NewBotParams {
             bot_id: bot_id.to_string(),
             backend: backend.to_string(),
-            relays,
-            capabilities,
-            uri: uri.map(|s| SecretString::new(s.into())),
+            relays: relays.to_vec(),
+            capabilities: capabilities.to_vec(),
+            uri,
             display_name: None,
             about: None,
             picture: None,
@@ -538,7 +533,7 @@ fn prompt_uri_with_label(backend: &str) -> Result<String, DaemonError> {
             println!("A bunker URI is required for this backend.");
             continue;
         }
-        if backend == "bunker_remote" && uri.contains("ws://") && !uri.contains("wss://") {
+        if backend == "bunker_remote" && uri.contains("ws://") {
             println!("Remote bunker must use wss://, not ws://.");
             continue;
         }
