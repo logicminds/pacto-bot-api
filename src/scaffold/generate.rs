@@ -32,6 +32,8 @@ static EMBEDDED_TEMPLATES: LazyLock<Result<tempfile::TempDir, String>> = LazyLoc
 
 fn extract_embedded_dir(dir: &Dir, dest: &Path) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+    // `include_dir` stores file paths relative to the included root, so all
+    // files are written underneath `dest` regardless of how deep we recurse.
     for file in dir.files() {
         let target = dest.join(file.path());
         if let Some(parent) = target.parent() {
@@ -40,7 +42,11 @@ fn extract_embedded_dir(dir: &Dir, dest: &Path) -> Result<(), String> {
         fs::write(target, file.contents()).map_err(|e| e.to_string())?;
     }
     for subdir in dir.dirs() {
-        extract_embedded_dir(subdir, &dest.join(subdir.path()))?;
+        // Create the subdirectory explicitly so empty directories are preserved,
+        // but keep passing the same `dest` because nested file paths are still
+        // relative to the original included root.
+        fs::create_dir_all(dest.join(subdir.path())).map_err(|e| e.to_string())?;
+        extract_embedded_dir(subdir, dest)?;
     }
     Ok(())
 }
@@ -402,7 +408,7 @@ fn render_template_tree(
             continue;
         }
 
-        let relative = source.strip_prefix(template_dir).map_err(|e| {
+        let relative = source.strip_prefix(current).map_err(|e| {
             DaemonError::Config(format!("failed to compute relative template path: {e}"))
         })?;
 
@@ -432,7 +438,7 @@ fn render_template_tree(
 
         if source.is_dir() {
             fs::create_dir_all(&target).map_err(DaemonError::Io)?;
-            render_template_tree(template_dir, target_dir, &source, context, policy, denylist)?;
+            render_template_tree(template_dir, &target, &source, context, policy, denylist)?;
         } else {
             render_template_file(&source, &target, context, policy, denylist)?;
         }
