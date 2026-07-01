@@ -321,16 +321,20 @@ class Bot:
 
     async def _handle_event(self, event: AgentEventParams) -> None:
         parsed = parse_command(event.content)
+        command: str | None = None
 
         if parsed is None:
-            self._log(f"ignoring malformed event {event.event_id}")
-            await self._client.handler_response(
-                action="ignore", event_id=event.event_id
-            )
-            return
-
-        command = parsed["command"]
-        handler = self._commands.get(command) or self._default_handler
+            if self._default_handler is None:
+                self._log(f"ignoring malformed event {event.event_id}")
+                await self._client.handler_response(
+                    action="ignore", event_id=event.event_id
+                )
+                return
+            self._log(f"routing non-command event {event.event_id} to default handler")
+            handler = self._default_handler
+        else:
+            command = parsed["command"]
+            handler = self._commands.get(command) or self._default_handler
 
         if handler is None:
             await self._client.handler_response(
@@ -343,7 +347,8 @@ class Bot:
             if inspect.isawaitable(result):
                 result = await result
         except Exception as exc:  # pragma: no cover - defensive
-            self._log(f"handler error for {command}: {exc}")
+            label = command if command else "default"
+            self._log(f"handler error for {label}: {exc}")
             if self.reply_on_error:
                 await self._client.handler_response(
                     action="reply",
