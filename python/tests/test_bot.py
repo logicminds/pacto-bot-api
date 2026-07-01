@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
 from pacto_bot_api import Bot, PactoClient, parse_command
+from pacto_bot_api._generated.models import AgentEventParams
 from pacto_bot_api.transports import Transport, UnixTransport
 
 
@@ -58,6 +60,67 @@ def bot(transport: MockTransport) -> Bot:
         transport=transport,
         event_types=["dm_received"],
         capabilities=["ReadMessages", "SendMessages"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Non-command dispatch
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_malformed_event_ignored_without_default_handler():
+    """Non-slash events are ignored when no default handler is registered."""
+    bot = Bot("test-bot", transport=MockTransport())
+    bot._client = AsyncMock()
+    event = AgentEventParams(
+        bot_id="test-bot",
+        event_id="e-1",
+        type="dm_received",
+        chat_id="npub1chat",
+        content="plain text without slash",
+        rumor_id="r-1",
+        author="npub1author",
+        timestamp=1234567890,
+    )
+    await bot._handle_event(event)
+    bot._client.handler_response.assert_awaited_once_with(
+        action="ignore", event_id="e-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_default_handler_receives_non_command_event():
+    """Non-slash events are routed to the default handler when registered."""
+    bot = Bot("test-bot", transport=MockTransport())
+    bot._client = AsyncMock()
+    calls: list[AgentEventParams] = []
+
+    @bot.default
+    async def fallback(event, b):
+        calls.append(event)
+        return {
+            "event_id": event.event_id,
+            "action": "reply",
+            "content": "Try /help",
+        }
+
+    event = AgentEventParams(
+        bot_id="test-bot",
+        event_id="e-2",
+        type="dm_received",
+        chat_id="npub1chat",
+        content="hello there",
+        rumor_id="r-2",
+        author="npub1author",
+        timestamp=1234567890,
+    )
+    await bot._handle_event(event)
+
+    assert len(calls) == 1
+    assert calls[0].event_id == "e-2"
+    bot._client.handler_response.assert_awaited_once_with(
+        action="reply", event_id="e-2", content="Try /help"
     )
 
 
