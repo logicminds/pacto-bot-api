@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from pacto_bot_api.transports import (
+    AutoTransport,
     HttpTransport,
     Transport,
     UnixTransport,
@@ -366,6 +369,61 @@ def test_resolve_http_secret_from_file(tmp_path, monkeypatch):
     token_path = tmp_path / "bot_secret_token"
     token_path.write_text("file-secret\n")
     assert resolve_http_secret(None, str(tmp_path)) == "file-secret"
+
+
+# ---------------------------------------------------------------------------
+# AutoTransport
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_auto_transport_uses_unix_when_available(tmp_path):
+    """Auto transport selects Unix when the socket is reachable."""
+    socket_path = str(tmp_path / "pacto-bot-api.sock")
+    Path(socket_path).touch()
+    auto = AutoTransport(socket_path, "host.docker.internal:9800", str(tmp_path))
+    with patch(
+        "pacto_bot_api.transports.asyncio.open_unix_connection",
+        AsyncMock(return_value=(AsyncMock(), AsyncMock())),
+    ):
+        await auto.connect()
+    assert auto._active is auto._unix
+    assert auto.name == f"unix:{socket_path}"
+
+
+@pytest.mark.asyncio
+async def test_auto_transport_falls_back_to_http(tmp_path):
+    """Auto transport falls back to HTTP when the Unix socket fails."""
+    socket_path = str(tmp_path / "pacto-bot-api.sock")
+    Path(socket_path).touch()
+    auto = AutoTransport(socket_path, "host.docker.internal:9800", str(tmp_path))
+    with patch(
+        "pacto_bot_api.transports.asyncio.open_unix_connection",
+        AsyncMock(side_effect=PermissionError(13, "Permission denied")),
+    ):
+        with patch("pacto_bot_api.transports.resolve_http_secret", return_value="secret-token"):
+            await auto.connect()
+    assert auto._active is auto._http
+    assert auto.name == "http://host.docker.internal:9800"
+
+
+@pytest.mark.asyncio
+async def test_auto_transport_error_when_both_fail(tmp_path):
+    """Auto transport reports a clear error when both Unix and HTTP fail."""
+    socket_path = str(tmp_path / "pacto-bot-api.sock")
+    Path(socket_path).touch()
+    auto = AutoTransport(socket_path, "host.docker.internal:9800", str(tmp_path))
+    with patch(
+        "pacto_bot_api.transports.asyncio.open_unix_connection",
+        AsyncMock(side_effect=PermissionError(13, "Permission denied")),
+    ):
+        with patch("pacto_bot_api.transports.resolve_http_secret", side_effect=RuntimeError("no token")):
+            with pytest.raises(ConnectionError, match="Cannot connect to pacto-bot-api daemon") as exc_info:
+                await auto.connect()
+
+    message = str(exc_info.value)
+    assert "Unix socket" in message
+    assert "HTTP fallback" in message
 
 
 # ---------------------------------------------------------------------------

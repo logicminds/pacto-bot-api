@@ -14,6 +14,7 @@ from ._generated.client import PactoClient, PactoClientError
 from ._generated.models import AgentEventParams, AgentStatusParams
 from .parser import parse_command
 from .transports import (
+    AutoTransport,
     HttpTransport,
     Transport,
     UnixTransport,
@@ -102,6 +103,12 @@ class Bot:
             return transport
 
         transport_name = (transport or os.environ.get("PACTO_TRANSPORT", "unix")).lower()
+        if transport_name == "auto":
+            return AutoTransport(
+                _resolve_socket_path(socket_path, data_dir),
+                http_bind,
+                data_dir,
+            )
         if transport_name == "unix":
             return UnixTransport(_resolve_socket_path(socket_path, data_dir))
         if transport_name == "http":
@@ -249,9 +256,14 @@ class Bot:
         )
 
         # Tell HTTP transports the handler id so mutating calls and SSE work.
-        if isinstance(self._transport, HttpTransport):
-            self._transport.handler_id = self._handler_id
-            await self._transport.start_sse()
+        if hasattr(self._transport, "start_sse"):
+            if hasattr(self._transport, "handler_id"):
+                self._transport.handler_id = self._handler_id
+            try:
+                await self._transport.start_sse()
+            except (OSError, TimeoutError) as exc:
+                self._log(str(exc))
+                sys.exit(1)
 
         self._reader_task = asyncio.create_task(self._dispatch_loop())
 
