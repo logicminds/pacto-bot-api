@@ -344,10 +344,101 @@ class HttpTransport:
         self._sse_writer = None
 
 
+# ---------------------------------------------------------------------------
+# Auto transport (Unix -> HTTP fallback)
+# ---------------------------------------------------------------------------
+
+
+class AutoTransport:
+    """Transport that tries a Unix socket first, then falls back to HTTP.
+
+    This is useful for Docker-on-macOS setups where the host Unix socket cannot
+    be shared into the Linux container, but an HTTP daemon is available on the
+    host via ``host.docker.internal``.
+    """
+
+    def __init__(
+        self,
+        socket_path: str,
+        http_bind: str | None,
+        data_dir: str,
+    ):
+        self._socket_path = socket_path
+        self._http_bind = http_bind
+        self._data_dir = data_dir
+        self._unix = UnixTransport(socket_path)
+        self._http: HttpTransport | None = None
+        self._active: Transport | None = None
+        self._handler_id: str | None = None
+
+    @property
+    def name(self) -> str:
+        if self._active:
+            return self._active.name
+        return f"auto({self._unix.name} -> {self._http_bind or 'host.docker.internal:9800'})"
+
+    @property
+    def handler_id(self) -> str | None:
+        return self._handler_id
+
+    @handler_id.setter
+    def handler_id(self, value: str) -> None:
+        self._handler_id = value
+        if self._http is not None:
+            self._http.handler_id = value
+
+    async def connect(self) -> None:
+        try:
+            await self._unix.connect()
+            self._active = self._unix
+            return
+        except OSError as unix_error:
+            http_bind = _resolve_http_bind(self._http_bind)
+            try:
+                secret = resolve_http_secret(None, self._data_dir)
+                self._http = HttpTransport(
+                    http_bind[0], http_bind[1], secret, handler_id=self._handler_id
+                )
+                await self._http.connect()
+                self._active = self._http
+                return
+            except Exception as http_error:
+                if self._http is not None:
+                    await self._http.close()
+                self._http = None
+                raise ConnectionError(
+                    f"Cannot connect to pacto-bot-api daemon. "
+                    f"Unix socket at {self._socket_path} failed: {unix_error}. "
+                    f"HTTP fallback to {http_bind[0]}:{http_bind[1]} also failed: {http_error}."
+                ) from http_error
+
+    async def start_sse(self) -> None:
+        if self._active is None:
+            raise RuntimeError("transport not connected")
+        if hasattr(self._active, "start_sse"):
+            await self._active.start_sse()
+
+    async def readline(self) -> str:
+        if self._active is None:
+            raise RuntimeError("transport not connected")
+        return await self._active.readline()
+
+    async def write_frame(self, frame: dict[str, Any]) -> dict[str, Any] | None:
+        if self._active is None:
+            raise RuntimeError("transport not connected")
+        return await self._active.write_frame(frame)
+
+    async def close(self) -> None:
+        if self._active is not None:
+            await self._active.close()
+            self._active = None
+
+
 __all__ = [
     "Transport",
     "UnixTransport",
     "HttpTransport",
+    "AutoTransport",
     "resolve_http_secret",
     "_resolve_socket_path",
     "_resolve_data_dir",
