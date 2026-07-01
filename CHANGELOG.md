@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-01
+
 ### Changed
 
 - Python scaffold `docker-compose.yml` now pulls the Nostr relay and NIP-46 bunker images from `ghcr.io/covenant-gov/pacto-dev-env` instead of requiring local builds.
@@ -154,7 +156,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config file permissions enforced (`0o600` or stricter) on daemon startup.
 - Daemon-wide exclusive lock on `$DATA_DIR/daemon.lock` to prevent concurrent instances.
 
-[Unreleased]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/covenant-gov/pacto-bot-api/compare/v0.1.0...v0.2.0
